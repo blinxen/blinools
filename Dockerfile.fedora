@@ -1,0 +1,61 @@
+FROM fedora:44
+
+ARG LOGIN_USER=root
+ARG LOGIN_HOME=/root
+
+RUN dnf install -y \
+      systemd systemd-udev systemd-networkd systemd-resolved dbus passwd shadow-utils \
+      podman podman-docker iproute iputils procps-ng kernel-modules \
+    && dnf clean all
+
+RUN rm -f /etc/machine-id && touch /etc/machine-id
+
+RUN useradd -m vmuser && \
+    grep -q vmuser /etc/subuid || echo "vmuser:100000:65536" >> /etc/subuid && \
+    grep -q vmuser /etc/subgid || echo "vmuser:100000:65536" >> /etc/subgid && \
+    mkdir -p /var/lib/systemd/linger && touch /var/lib/systemd/linger/vmuser
+
+RUN mkdir -p /etc/systemd/network && \
+    cat > /etc/systemd/network/20-wired.network <<'EOF'
+[Match]
+Name=en*
+[Network]
+DHCP=yes
+EOF
+
+RUN systemctl enable systemd-networkd.service systemd-resolved.service && \
+    systemctl mask systemd-udev-settle.service \
+      systemd-networkd-wait-online.service \
+      systemd-fsck-root.service \
+      auditd.service && \
+    systemctl set-default multi-user.target
+
+RUN cat > /etc/systemd/system/autologin@.service <<EOF
+[Unit]
+Description=Autologin shell on %I
+After=systemd-user-sessions.service
+Conflicts=serial-getty@%i.service
+Before=getty.target
+
+[Service]
+Type=idle
+ExecStart=/bin/bash -l
+User=${LOGIN_USER}
+WorkingDirectory=${LOGIN_HOME}
+TTYPath=/dev/%I
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYReset=yes
+TTYVHangup=yes
+Restart=always
+UtmpIdentifier=%I
+UtmpMode=user
+
+[Install]
+WantedBy=getty.target
+EOF
+
+RUN systemctl enable autologin@hvc0.service
+
+CMD ["/sbin/init"]
