@@ -50,8 +50,8 @@ rootfs = "./rootfs.img"
 memory_mb = 8192
 # How many cores the VM should have
 cpus = 4
-# Optional DNS server to use in the VM
-dns = "192.168.1.1"
+# Optional list of DNS servers to use in the VM
+dns = ["192.168.1.1"]
 # Optional paths to automatically mount under /mnt when the VM is started
 # Can also be defined with the --share flag, see blinools sandbox create --help
 shares = [
@@ -78,7 +78,7 @@ kernel_cmdline = "rw quiet"
 rootfs = "./rootfs.img"
 memory_mb = 8192
 cpus = 4
-dns = "192.168.1.1"
+dns = ["192.168.1.1"]
 ```
 
 2. Create the sandbox

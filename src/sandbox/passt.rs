@@ -17,7 +17,7 @@ pub struct PasstNetwork {
 impl PasstNetwork {
     pub fn new(
         cfg: Option<&PasstConfig>,
-        dns: Option<&String>,
+        dns: Option<&Vec<String>>,
     ) -> Result<PasstNetwork, anyhow::Error> {
         let socket_path = runtime_dir().join(format!("passt-{}.sock", std::process::id()));
         let mut binary_path = PathBuf::from("passt");
@@ -28,8 +28,10 @@ impl PasstNetwork {
         }
         let mut dns_config: Vec<&str> = Vec::new();
         if let Some(dns) = dns {
-            dns_config.push("--dns");
-            dns_config.push(dns);
+            for d in dns {
+                dns_config.push("--dns");
+                dns_config.push(d);
+            }
         }
         // TODO: socket needs to be cleanup
         let handle = Command::new(binary_path)
