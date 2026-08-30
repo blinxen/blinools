@@ -41,7 +41,9 @@ virtiofsd.binary = "/path/to/virtiofsd"
 # Path to the kernel
 kernel = "/boot/vmlinuz-7.1.10-200.fc44.x86_64"
 # Kernel command line parameters to pass
-kernel_cmdline = "console=hvc0 root=/dev/vda rw quiet"
+# "console" and "root" must not be configured here
+# They are hardcoded to "console=hvc0 root=/dev/vda" for now
+kernel_cmdline = "rw quiet"
 # Path to the rootfs
 rootfs = "./rootfs.img"
 # How much memory the VM should have in megabytes
@@ -72,7 +74,7 @@ The next steps assume you have a already compiled Linux kernel and a already bui
 ```toml
 [sandbox]
 kernel = "/boot/vmlinuz-7.1.10-200.fc44.x86_64"
-kernel_cmdline = "console=hvc0 root=/dev/vda rw quiet"
+kernel_cmdline = "rw quiet"
 rootfs = "./rootfs.img"
 memory_mb = 8192
 cpus = 4

@@ -7,7 +7,7 @@ use serde::Deserialize;
 pub struct Config {
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
-    #[garde(skip)]
+    #[garde(custom(validate_kernel_cmdline))]
     pub kernel_cmdline: String,
     #[garde(custom(path_exists))]
     pub rootfs: PathBuf,
@@ -54,6 +54,22 @@ pub struct PasstConfig {
 pub struct VirtiofsdConfig {
     #[garde(custom(path_exists_optional))]
     pub binary: Option<PathBuf>,
+}
+
+fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {
+    if value.contains("console=") {
+        return Err(garde::Error::new(
+            "Kernel command line parameters must not configure `console`. `console` is hardcoded to `hvc0` and cannot be changed.",
+        ));
+    }
+
+    if value.contains("root=") {
+        return Err(garde::Error::new(
+            "Kernel command line parameters must not configure `root`. `root` is hardcoded to `/dev/vda` and cannot be changed.",
+        ));
+    }
+
+    Ok(())
 }
 
 fn path_exists(value: &Path, _ctx: &()) -> garde::Result {
