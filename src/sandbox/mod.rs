@@ -30,6 +30,11 @@ pub enum Command {
         /// Sandbox name
         name: String,
     },
+    /// Shutdown a sandbox
+    Shutdown {
+        /// Sandbox name
+        name: String,
+    },
 }
 
 pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Error> {
@@ -47,6 +52,13 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
                 create_and_start_vm(&name, config, passt_network.socket_path().clone(), &mounts)?;
 
             child.wait().context("waiting on sandbox to exit")?;
+        }
+        Command::Shutdown { name } => {
+            // At this stage, the runtime dir must exist otherwise the vm was not created properly
+            let sandbox_runtime_dir = runtime_dir().join(name);
+            if sandbox_runtime_dir.exists() {
+                shutdown_vm(config.cloud_hypervisor, sandbox_runtime_dir)?;
+            }
         }
     };
 
@@ -75,7 +87,7 @@ pub fn create_and_start_vm(
 ) -> Result<Child, anyhow::Error> {
     let mut binary_path = PathBuf::from("cloud-hypervisor");
     if let Some(cloud_hypervisor) = config.cloud_hypervisor
-        && let Some(binary) = cloud_hypervisor.binary
+        && let Some(binary) = cloud_hypervisor.cloud_hypervisor_binary
     {
         binary_path = binary.to_path_buf();
     }
@@ -92,6 +104,23 @@ pub fn create_and_start_vm(
     })?;
 
     Ok(ch_vmm)
+}
+
+fn shutdown_vm(
+    config: Option<config::ChConfig>,
+    sandbox_runtime_dir: PathBuf,
+) -> Result<(), anyhow::Error> {
+    let mut binary_path = PathBuf::from("ch-remote");
+    if let Some(config) = config
+        && let Some(binary) = config.ch_remote_binary
+    {
+        binary_path = binary.to_path_buf();
+    }
+    cloud_hypervisor::shutdown_vm(
+        &binary_path,
+        &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
+    )?;
+    Ok(())
 }
 
 pub fn create_socket_path(sandbox_name: &str, socket_name: &str) -> PathBuf {

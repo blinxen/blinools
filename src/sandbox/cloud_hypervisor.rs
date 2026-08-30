@@ -6,6 +6,8 @@ use anyhow::Context;
 use crate::sandbox::create_socket_path;
 use crate::sandbox::fs::FsMount;
 
+pub const SOCKET_NAME: &str = "cloud-hypervisor.sock";
+
 pub struct VmConfig<'sandbox> {
     pub name: &'sandbox str,
     pub binary: &'sandbox Path,
@@ -46,7 +48,7 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
     // We probably also want to expose a socket here
     let handle = Command::new(cfg.binary)
         .arg("--api-socket")
-        .arg(create_socket_path(cfg.name, "cloud-hypervisor.sock"))
+        .arg(create_socket_path(cfg.name, SOCKET_NAME))
         .arg("--kernel")
         .arg(cfg.kernel)
         .arg("--disk")
@@ -74,4 +76,21 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
         .context("spawning cloud-hypervisor")?;
 
     Ok(handle)
+}
+
+pub fn shutdown_vm(binary_path: &Path, api_socket_path: &Path) -> Result<(), anyhow::Error> {
+    if api_socket_path.exists() {
+        let output = Command::new(binary_path)
+            .arg("--api-socket")
+            .arg(api_socket_path)
+            .arg("shutdown-vmm")
+            .output()
+            .context("shutting down vm")?;
+
+        if !output.status.success() {
+            return Err(anyhow::anyhow!("shutting down vm was not successful"));
+        }
+    }
+
+    Ok(())
 }
