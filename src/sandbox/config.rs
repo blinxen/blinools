@@ -17,8 +17,8 @@ pub struct Config {
     pub cpus: u8,
     #[garde(dive)]
     pub shares: Option<Vec<FsShare>>,
-    #[garde(ip)]
-    pub dns: Option<String>,
+    #[garde(inner(inner(ip)))]
+    pub dns: Option<Vec<String>>,
     #[garde(dive)]
     pub cloud_hypervisor: Option<ChConfig>,
     #[garde(dive)]
