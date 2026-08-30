@@ -1,7 +1,6 @@
 use std::path::{Path, PathBuf};
 
 use garde::Validate;
-use gix::hashtable::hash_set::HashSet;
 use serde::Deserialize;
 
 #[derive(Deserialize, Validate)]
@@ -16,7 +15,7 @@ pub struct Config {
     pub memory_mb: u64,
     #[garde(range(min = 1, max = 255))]
     pub cpus: u8,
-    #[garde(custom(validate_shares))]
+    #[garde(dive)]
     pub shares: Option<Vec<FsShare>>,
     #[garde(ip)]
     pub dns: Option<String>,
@@ -28,7 +27,7 @@ pub struct Config {
     pub virtiofsd: Option<VirtiofsdConfig>,
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 pub struct FsShare {
     #[garde(custom(path_exists))]
     pub host_dir: PathBuf,
@@ -81,26 +80,31 @@ fn path_exists_optional(value: &Option<PathBuf>, _ctx: &()) -> garde::Result {
     }
 }
 
-fn validate_shares(value: &Option<Vec<FsShare>>, _ctx: &()) -> garde::Result {
-    let Some(shares) = value else { return Ok(()) };
+// Used only by clap parser
+pub fn parse_share(s: &str) -> Result<FsShare, String> {
+    let (name, rest) = s
+        .split_once(':')
+        .ok_or_else(|| format!("invalid share `{s}`, expected TAG:PATH:(ro|rw)"))?;
 
-    for share in shares {
-        share
-            .validate()
-            .map_err(|e| garde::Error::new(e.to_string()))?;
-    }
+    let (path, mode) = rest
+        .rsplit_once(':')
+        .ok_or_else(|| format!("invalid share `{s}`, expected TAG:PATH:(ro|rw)"))?;
 
-    let mut seen = HashSet::new();
-    for share in shares {
-        if !seen.insert(&share.name) {
-            return Err(garde::Error::new(format!(
-                "duplicate share name `{}`",
-                share.name
-            )));
-        }
-    }
+    let read_only = match mode {
+        "ro" => true,
+        "rw" => false,
+        other => return Err(format!("invalid mode `{other}`, expected `ro` or `rw`")),
+    };
 
-    Ok(())
+    let share = FsShare {
+        host_dir: PathBuf::from(path),
+        name: name.to_owned(),
+        read_only,
+    };
+
+    share.validate().map_err(|e| e.to_string())?;
+
+    Ok(share)
 }
 
 #[cfg(test)]
@@ -129,33 +133,5 @@ mod tests {
     #[test]
     fn path_exists_optional_accepts_none() {
         assert!(path_exists_optional(&None, &()).is_ok());
-    }
-
-    #[test]
-    fn validate_shares_accepts_none_or_empty() {
-        assert!(validate_shares(&None, &()).is_ok());
-        assert!(validate_shares(&Some(Vec::new()), &()).is_ok());
-    }
-
-    #[test]
-    fn validate_shares_rejects_duplicate_name() {
-        let share = FsShare {
-            host_dir: PathBuf::from("/"),
-            name: String::from("name"),
-            read_only: false,
-        };
-        let share2 = FsShare {
-            host_dir: PathBuf::from("/"),
-            name: String::from("name"),
-            read_only: false,
-        };
-        let result = validate_shares(&Some(vec![share, share2]), &());
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .eq("duplicate share name `name`")
-        );
     }
 }

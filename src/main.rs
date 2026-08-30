@@ -2,11 +2,7 @@ mod config;
 mod sandbox;
 mod wip_pr;
 
-use std::path::Path;
-
-use anyhow::Context;
 use clap::{Parser, Subcommand};
-use garde::Validate;
 
 #[derive(Parser)]
 #[command(name = "blinools", about = "Common utilities blinxen uses")]
