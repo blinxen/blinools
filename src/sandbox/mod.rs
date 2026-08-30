@@ -23,7 +23,8 @@ pub enum Command {
 pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Error> {
     match command {
         Command::Create => {
-            let passt_network = passt::PasstNetwork::new(config.passt.as_ref(), config.dns.as_ref())?;
+            let passt_network =
+                passt::PasstNetwork::new(config.passt.as_ref(), config.dns.as_ref())?;
             let mut mounts = Vec::new();
             if let Some(shares) = &config.shares {
                 for share in shares {

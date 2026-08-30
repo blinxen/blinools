@@ -1,12 +1,14 @@
-use std::{os::unix::fs::PermissionsExt, path::PathBuf};
+use std::{os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
 
 use anyhow::Context;
+use garde::Validate;
 use serde::Deserialize;
 
 use crate::sandbox;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct Config {
+    #[garde[dive]]
     pub sandbox: Option<sandbox::config::Config>,
 }
 
@@ -24,4 +26,16 @@ pub fn setup_runtime_dir() -> Result<(), anyhow::Error> {
     std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
 
     Ok(())
+}
+
+pub fn parse_config(config_file: &str) -> Result<Option<Config>, anyhow::Error> {
+    let path = Path::new(config_file);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(path).context("reading config file")?;
+    let config: Config = toml::from_str(&content).context("parsing config file")?;
+    config.validate().context("validating config file")?;
+    Ok(Some(config))
 }
