@@ -51,6 +51,7 @@ cpus = 4
 # Optional DNS server to use in the VM
 dns = "192.168.1.1"
 # Optional paths to automatically mount under /mnt when the VM is started
+# Can also be defined with the --share flag, see blinools sandbox create --help
 shares = [
     { name = "share-name", host_dir = "/path/to/a/directory", read_only = false },
 ]

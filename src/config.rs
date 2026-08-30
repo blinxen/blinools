@@ -1,4 +1,7 @@
-use std::{os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
+use std::{
+    os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context;
 use garde::Validate;
