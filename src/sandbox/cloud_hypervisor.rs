@@ -18,7 +18,8 @@ pub struct VmConfig<'sandbox> {
 
 pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
     let mut mounts: Vec<String> = Vec::new();
-    let mut cmdline = cfg.cmdline.clone();
+    let mut cmdline = String::from("console=hvc0 root=/dev/vda ");
+    cmdline.push_str(&cfg.cmdline);
 
     for mount in cfg.mounts {
         mounts.push("--fs".into());
