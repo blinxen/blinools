@@ -2,10 +2,9 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
 use anyhow::Context;
-use wait_timeout::ChildExt;
 
-use crate::config::runtime_dir;
 use crate::sandbox::config::{FsShare, VirtiofsdConfig};
+use crate::sandbox::{create_socket_path, kill_child_and_socket_with_timeout};
 
 #[derive(Debug)]
 pub struct FsMount {
@@ -16,11 +15,12 @@ pub struct FsMount {
 }
 
 impl FsMount {
-    pub fn spawn(cfg: Option<&VirtiofsdConfig>, share: &FsShare) -> Result<Self, anyhow::Error> {
-        let socket_path =
-            runtime_dir().join(format!("vfsd-{}-{}.sock", share.name, std::process::id()));
-        let _ = std::fs::remove_file(&socket_path);
-
+    pub fn spawn(
+        sandbox_name: &str,
+        cfg: Option<&VirtiofsdConfig>,
+        share: &FsShare,
+    ) -> Result<Self, anyhow::Error> {
+        let socket_path = create_socket_path(sandbox_name, &format!("vfsd-{}.sock", share.name));
         let mut binary_path = PathBuf::from("virtiofsd");
         if let Some(cfg) = cfg
             && let Some(binary) = &cfg.binary
@@ -58,18 +58,6 @@ impl FsMount {
 
 impl Drop for FsMount {
     fn drop(&mut self) {
-        unsafe {
-            let _ = libc::kill(self.handle.id() as i32, libc::SIGTERM);
-        }
-        match self.handle.wait_timeout(std::time::Duration::from_secs(3)) {
-            Ok(Some(_)) => {}
-            _ => {
-                let _ = self.handle.kill();
-                let _ = self.handle.wait();
-            }
-        }
-        // This makes sure that the socket file is properly removed (happens when virtiofsd did not
-        // gracefully shutdown)
-        let _ = std::fs::remove_file(&self.socket_path);
+        kill_child_and_socket_with_timeout(&mut self.handle, &self.socket_path);
     }
 }

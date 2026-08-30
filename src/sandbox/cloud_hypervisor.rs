@@ -1,15 +1,17 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
 use anyhow::Context;
 
+use crate::sandbox::create_socket_path;
 use crate::sandbox::fs::FsMount;
 
 pub struct VmConfig<'sandbox> {
-    pub binary: PathBuf,
-    pub kernel: PathBuf,
-    pub rootfs: PathBuf,
-    pub network_socket: PathBuf,
+    pub name: &'sandbox str,
+    pub binary: &'sandbox Path,
+    pub kernel: &'sandbox Path,
+    pub rootfs: &'sandbox Path,
+    pub network_socket: &'sandbox Path,
     pub cmdline: String,
     pub memory_mb: u64,
     pub cpus: u8,
@@ -43,6 +45,8 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
     // TODO: Control whether the args are good enough here
     // We probably also want to expose a socket here
     let handle = Command::new(cfg.binary)
+        .arg("--api-socket")
+        .arg(create_socket_path(cfg.name, "cloud-hypervisor.sock"))
         .arg("--kernel")
         .arg(cfg.kernel)
         .arg("--disk")
