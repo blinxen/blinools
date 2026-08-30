@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use garde::Validate;
 
 #[derive(Parser)]
 #[command(name = "blinools", about = "Common utilities blinxen uses")]
@@ -48,7 +49,7 @@ enum Commands {
 
 fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
-    let config = parse_config(&cli.config_file)?;
+    let config = config::parse_config(&cli.config_file)?;
     config::setup_runtime_dir()?;
 
     match cli.command {
@@ -70,16 +71,4 @@ fn main() -> Result<(), anyhow::Error> {
     };
 
     Ok(())
-}
-
-fn parse_config(config_file: &str) -> Result<Option<config::Config>, anyhow::Error> {
-    let path = Path::new(config_file);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let content = std::fs::read_to_string(path).context("reading config file")?;
-    Ok(Some(
-        toml::from_str(&content).context("parsing config file")?,
-    ))
 }

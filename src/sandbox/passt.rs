@@ -15,7 +15,10 @@ pub struct PasstNetwork {
 
 // TODO: Think about firewall here and how we can put another defense line
 impl PasstNetwork {
-    pub fn new(cfg: Option<&PasstConfig>, dns: Option<&String>) -> Result<PasstNetwork, anyhow::Error> {
+    pub fn new(
+        cfg: Option<&PasstConfig>,
+        dns: Option<&String>,
+    ) -> Result<PasstNetwork, anyhow::Error> {
         let socket_path = runtime_dir().join(format!("passt-{}.sock", std::process::id()));
         let mut binary_path = PathBuf::from("passt");
         if let Some(cfg) = cfg
