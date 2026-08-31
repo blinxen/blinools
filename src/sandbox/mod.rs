@@ -22,6 +22,8 @@ use crate::{
 
 #[derive(Subcommand)]
 pub enum Command {
+    // List all sandbox
+    Ps,
     /// Create a sandbox
     Create {
         /// Add a filesystem share: TAG:PATH:(ro|rw). Can be passed multiple times.
@@ -39,6 +41,9 @@ pub enum Command {
 
 pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Error> {
     match command {
+        Command::Ps => {
+            list_vms(config.cloud_hypervisor)?;
+        }
         Command::Create { shares, name } => {
             setup_runtime_dir_for_sandbox(&name)?;
             let passt_network =
@@ -57,8 +62,9 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             // At this stage, the runtime dir must exist otherwise the vm was not created properly
             let sandbox_runtime_dir = runtime_dir().join(name);
             if sandbox_runtime_dir.exists() {
-                shutdown_vm(config.cloud_hypervisor, sandbox_runtime_dir)?;
+                shutdown_vm(config.cloud_hypervisor, &sandbox_runtime_dir)?;
             }
+            std::fs::remove_dir_all(sandbox_runtime_dir).context("cleaning up sandbox runtime directory")?;
         }
     };
 
@@ -77,6 +83,17 @@ fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) 
     }
 
     shares.into_values().collect()
+}
+
+fn list_vms(config: Option<config::ChConfig>) -> Result<(), anyhow::Error> {
+    let mut binary_path = PathBuf::from("ch-remote");
+    if let Some(config) = config
+        && let Some(binary) = config.ch_remote_binary
+    {
+        binary_path = binary.to_path_buf();
+    }
+    cloud_hypervisor::list_vms(&binary_path)?;
+    Ok(())
 }
 
 pub fn create_and_start_vm(
@@ -108,7 +125,7 @@ pub fn create_and_start_vm(
 
 fn shutdown_vm(
     config: Option<config::ChConfig>,
-    sandbox_runtime_dir: PathBuf,
+    sandbox_runtime_dir: &Path,
 ) -> Result<(), anyhow::Error> {
     let mut binary_path = PathBuf::from("ch-remote");
     if let Some(config) = config
