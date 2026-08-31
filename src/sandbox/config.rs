@@ -3,14 +3,24 @@ use std::path::{Path, PathBuf};
 use garde::Validate;
 use serde::Deserialize;
 
+#[derive(Deserialize, Default)]
+pub enum RootfsType {
+    RAW,
+    #[default]
+    QCOW2,
+}
+
 #[derive(Deserialize, Validate)]
 pub struct Config {
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
-    pub kernel_cmdline: String,
+    pub kernel_cmdline: Option<String>,
     #[garde(custom(path_exists))]
     pub rootfs: PathBuf,
+    #[garde(skip)]
+    #[serde(default)]
+    pub rootfs_type: RootfsType,
     #[garde(range(min = 512, max = 131072))]
     pub memory_mb: u64,
     #[garde(range(min = 1, max = 255))]
@@ -58,7 +68,9 @@ pub struct VirtiofsdConfig {
     pub binary: Option<PathBuf>,
 }
 
-fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {
+fn validate_kernel_cmdline(value: &Option<String>, _ctx: &()) -> garde::Result {
+    let Some(value) = value else { return Ok(()) };
+
     if value.contains("console=") {
         return Err(garde::Error::new(
             "Kernel command line parameters must not configure `console`. `console` is hardcoded to `hvc0` and cannot be changed.",
