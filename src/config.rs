@@ -1,7 +1,4 @@
-use std::{
-    os::unix::fs::PermissionsExt,
-    path::{Path, PathBuf},
-};
+use std::{os::unix::fs::PermissionsExt, path::PathBuf};
 
 use anyhow::Context;
 use garde::Validate;
@@ -32,13 +29,25 @@ pub fn setup_runtime_dir() -> Result<(), anyhow::Error> {
 }
 
 pub fn parse_config(config_file: &str) -> Result<Option<Config>, anyhow::Error> {
-    let path = Path::new(config_file);
-    if !path.exists() {
-        return Ok(None);
-    }
+    let config: Config = config::Config::builder()
+        // HOME/.config/blinools/blinools.toml
+        .add_source(
+            config::File::from(config_dir().join("blinools").join("blinools.toml")).required(false),
+        )
+        .add_source(config::File::with_name(config_file))
+        .build()
+        .context("reading config file")?
+        .try_deserialize()
+        .context("parsing config file")?;
 
-    let content = std::fs::read_to_string(path).context("reading config file")?;
-    let config: Config = toml::from_str(&content).context("parsing config file")?;
     config.validate().context("validating config file")?;
     Ok(Some(config))
+}
+
+fn config_dir() -> PathBuf {
+    std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::home_dir().map(|h| h.join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
 }

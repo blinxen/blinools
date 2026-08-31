@@ -29,7 +29,13 @@ or
 
 ### Configuration reference
 
-The configuration file uses the TOML format and can be configured using the `-c` or `--config` flag.
+The configuration file uses the TOML format and can be configured using:
+
+* a global configuration file located at `$XDG_CONFIG_HOME/blinools/blinools.toml` or `$HOME/.config/blinools/blinools.toml` if `$XDG_CONFIG_HOME` is not defined
+* a `-c` or `--config` which defaults to `./blinools.toml`
+
+The order in which they are loaded is global -> `--config` flag. The flag overwrites whatever was defined in the global configuration file.
+
 All optional fields have a comment that starts with "Optional".
 
 ```toml

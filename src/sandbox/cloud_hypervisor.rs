@@ -53,10 +53,7 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
     }
 
     let disk = match cfg.rootfs_type {
-        RootfsType::RAW => format!(
-            "path={},image_type=raw",
-            cfg.rootfs.display()
-        ),
+        RootfsType::Raw => format!("path={},image_type=raw", cfg.rootfs.display()),
         RootfsType::QCOW2 => format!(
             "path={},image_type=qcow2,backing_files=on",
             cfg.rootfs.display()
