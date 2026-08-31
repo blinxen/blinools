@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
 pub enum RootfsType {
-    RAW,
+    Raw,
     #[default]
     QCOW2,
 }
