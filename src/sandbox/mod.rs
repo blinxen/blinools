@@ -64,7 +64,8 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             if sandbox_runtime_dir.exists() {
                 shutdown_vm(config.cloud_hypervisor, &sandbox_runtime_dir)?;
             }
-            std::fs::remove_dir_all(sandbox_runtime_dir).context("cleaning up sandbox runtime directory")?;
+            std::fs::remove_dir_all(sandbox_runtime_dir)
+                .context("cleaning up sandbox runtime directory")?;
         }
     };
 
@@ -113,8 +114,9 @@ pub fn create_and_start_vm(
         binary: &binary_path,
         kernel: &config.kernel,
         rootfs: &config.rootfs,
+        rootfs_type: config.rootfs_type,
         network_socket: &network_socket,
-        cmdline: config.kernel_cmdline,
+        cmdline: config.kernel_cmdline.unwrap_or_default(),
         memory_mb: config.memory_mb,
         cpus: config.cpus,
         mounts,

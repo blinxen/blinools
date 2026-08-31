@@ -16,9 +16,10 @@ RUN dnf install -y \
     procps-ng \
     kernel-modules \
     ncurses \
-    nvim \
+    neovim \
     ripgrep \
     fd-find \
+    chrony \
     && dnf clean all
 
 # Let systemd generate a machine ID on first boot
