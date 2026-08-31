@@ -143,11 +143,17 @@ pub fn list_vms(binary_path: &Path) -> Result<(), anyhow::Error> {
             .arg("info")
             .output()
             .context("getting coud hypervisor info on sandbox")?;
-        let ch_info: ChInfo = serde_json::from_slice(&output.stdout).context("")?;
-        sandbox_infos.push(SandboxInfo {
-            name: sandbox_name.to_string_lossy().to_string(),
-            state: ch_info.state,
-        });
+        if let Ok(ch_info) = serde_json::from_slice::<ChInfo>(&output.stdout) {
+            sandbox_infos.push(SandboxInfo {
+                name: sandbox_name.to_string_lossy().to_string(),
+                state: ch_info.state,
+            });
+        } else {
+            sandbox_infos.push(SandboxInfo {
+                name: sandbox_name.to_string_lossy().to_string(),
+                state: String::from("unknown"),
+            });
+        }
     }
     println!("{}", Table::new(sandbox_infos));
     Ok(())
