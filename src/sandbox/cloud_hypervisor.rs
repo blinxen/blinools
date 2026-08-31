@@ -2,7 +2,10 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
 use anyhow::Context;
+use serde::Deserialize;
+use tabled::{Table, Tabled};
 
+use crate::config::runtime_dir;
 use crate::sandbox::create_socket_path;
 use crate::sandbox::fs::FsMount;
 
@@ -85,12 +88,44 @@ pub fn shutdown_vm(binary_path: &Path, api_socket_path: &Path) -> Result<(), any
             .arg(api_socket_path)
             .arg("shutdown-vmm")
             .output()
-            .context("shutting down vm")?;
+            .context("shutting down the sandbox")?;
 
         if !output.status.success() {
-            return Err(anyhow::anyhow!("shutting down vm was not successful"));
+            return Err(anyhow::anyhow!("shutting down the sandbox was not successful"));
         }
     }
 
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ChInfo {
+    pub state: String,
+}
+
+#[derive(Tabled)]
+pub struct SandboxInfo {
+    pub name: String,
+    pub state: String,
+}
+
+pub fn list_vms(binary_path: &Path) -> Result<(), anyhow::Error> {
+    let entries = std::fs::read_dir(runtime_dir()).context("crawling runtime directory for sandboxes")?;
+    let mut sandbox_infos: Vec<SandboxInfo> = Vec::with_capacity(entries.size_hint().1.unwrap_or(0));
+    for entry in entries {
+        let sandbox_name = match entry {
+            Ok(entry) => entry.file_name(),
+            _ => continue
+        };
+        let output = Command::new(binary_path)
+            .arg("--api-socket")
+            .arg(runtime_dir().join(&sandbox_name).join(SOCKET_NAME))
+            .arg("info")
+            .output()
+            .context("getting coud hypervisor info on sandbox")?;
+        let ch_info: ChInfo = serde_json::from_slice(&output.stdout).context("")?;
+        sandbox_infos.push(SandboxInfo {name: sandbox_name.to_string_lossy().to_string(), state: ch_info.state});
+    }
+    println!("{}", Table::new(sandbox_infos));
     Ok(())
 }
