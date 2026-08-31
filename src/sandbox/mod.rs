@@ -63,9 +63,9 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             let sandbox_runtime_dir = runtime_dir().join(name);
             if sandbox_runtime_dir.exists() {
                 shutdown_vm(config.cloud_hypervisor, &sandbox_runtime_dir)?;
+                std::fs::remove_dir_all(sandbox_runtime_dir)
+                    .context("cleaning up sandbox runtime directory")?;
             }
-            std::fs::remove_dir_all(sandbox_runtime_dir)
-                .context("cleaning up sandbox runtime directory")?;
         }
     };
 
