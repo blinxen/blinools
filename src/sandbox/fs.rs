@@ -31,7 +31,7 @@ impl FsMount {
         cmd.arg("--socket-path")
             .arg(&socket_path)
             .arg("--shared-dir")
-            .arg(share.host_dir.clone())
+            .arg(&share.host_dir)
             .arg("--sandbox")
             .arg("namespace")
             .arg("--cache")

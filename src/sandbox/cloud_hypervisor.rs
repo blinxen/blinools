@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 use anyhow::Context;
@@ -7,25 +7,43 @@ use tabled::{Table, Tabled};
 
 use crate::config::runtime_dir;
 use crate::sandbox::config::RootfsType;
-use crate::sandbox::create_socket_path;
 use crate::sandbox::fs::FsMount;
+use crate::sandbox::{create_qcow2_overlay, create_socket_path};
 
 pub const SOCKET_NAME: &str = "cloud-hypervisor.sock";
 
-pub struct VmConfig<'sandbox> {
+pub struct CloudHypervisorVmConfig<'sandbox> {
     pub name: &'sandbox str,
     pub binary: &'sandbox Path,
     pub kernel: &'sandbox Path,
     pub rootfs: &'sandbox Path,
     pub rootfs_type: RootfsType,
+    pub reset_overlay: bool,
     pub network_socket: &'sandbox Path,
     pub cmdline: String,
     pub memory_mb: u64,
     pub cpus: u8,
     pub mounts: &'sandbox Vec<FsMount>,
 }
+pub struct CloudHypervisor {
+    socket_path: PathBuf,
+    handle: Child,
+}
 
-pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
+impl CloudHypervisor {
+    pub fn block_until_vm_shutsdown(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+        self.handle.wait()
+    }
+}
+
+impl Drop for CloudHypervisor {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.socket_path);
+        let _ = std::fs::remove_file(self.socket_path.with_added_extension("lock"));
+    }
+}
+
+pub fn create_vm(cfg: &CloudHypervisorVmConfig) -> Result<CloudHypervisor, anyhow::Error> {
     let mut mounts: Vec<String> = Vec::new();
     let mut cmdline = format!(
         "console=hvc0 root=/dev/vda rw systemd.hostname={} ",
@@ -52,23 +70,18 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
         }
     }
 
-    let disk = match cfg.rootfs_type {
-        RootfsType::Raw => format!("path={},image_type=raw", cfg.rootfs.display()),
-        RootfsType::QCOW2 => format!(
-            "path={},image_type=qcow2,backing_files=on",
-            cfg.rootfs.display()
-        ),
-    };
-
-    // TODO: Control whether the args are good enough here
-    // We probably also want to expose a socket here
+    let socket_path = create_socket_path(cfg.name, SOCKET_NAME);
     let handle = Command::new(cfg.binary)
         .arg("--api-socket")
-        .arg(create_socket_path(cfg.name, SOCKET_NAME))
+        .arg(&socket_path)
         .arg("--kernel")
         .arg(cfg.kernel)
+        .arg("--landlock")
         .arg("--disk")
-        .arg(disk)
+        .arg(format!(
+            "path={},image_type=qcow2,backing_files=on",
+            create_qcow2_overlay(cfg)?.display()
+        ))
         .args(mounts)
         .arg("--cmdline")
         .arg(cmdline)
@@ -91,7 +104,10 @@ pub fn create_vm(cfg: VmConfig) -> Result<Child, anyhow::Error> {
         .spawn()
         .context("spawning cloud-hypervisor")?;
 
-    Ok(handle)
+    Ok(CloudHypervisor {
+        socket_path,
+        handle,
+    })
 }
 
 pub fn shutdown_vm(binary_path: &Path, api_socket_path: &Path) -> Result<(), anyhow::Error> {
@@ -108,6 +124,8 @@ pub fn shutdown_vm(binary_path: &Path, api_socket_path: &Path) -> Result<(), any
                 "shutting down the sandbox was not successful"
             ));
         }
+    } else {
+        eprintln!("Sandbox with the given name does not exist");
     }
 
     Ok(())
@@ -134,9 +152,17 @@ pub fn list_vms(binary_path: &Path) -> Result<(), anyhow::Error> {
             Ok(entry) => entry.file_name(),
             _ => continue,
         };
+        let socket_path = runtime_dir().join(&sandbox_name).join(SOCKET_NAME);
+        if !socket_path.exists() {
+            sandbox_infos.push(SandboxInfo {
+                name: sandbox_name.to_string_lossy().to_string(),
+                state: String::from("stopped"),
+            });
+            continue;
+        }
         let output = Command::new(binary_path)
             .arg("--api-socket")
-            .arg(runtime_dir().join(&sandbox_name).join(SOCKET_NAME))
+            .arg(socket_path)
             .arg("info")
             .output()
             .context("getting coud hypervisor info on sandbox")?;
