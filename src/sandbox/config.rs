@@ -1,13 +1,25 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use garde::Validate;
 use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
 pub enum RootfsType {
-    Raw,
     #[default]
+    Raw,
     QCOW2,
+}
+
+impl fmt::Display for RootfsType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RootfsType::Raw => write!(f, "raw"),
+            RootfsType::QCOW2 => write!(f, "qcow2"),
+        }
+    }
 }
 
 #[derive(Deserialize, Validate)]

@@ -46,7 +46,7 @@ enum Commands {
 fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
     let config = config::parse_config(&cli.config_file)?;
-    config::setup_runtime_dir()?;
+    config::setup_dirs()?;
 
     match cli.command {
         Commands::WipPr {

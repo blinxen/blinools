@@ -19,4 +19,4 @@ sudo mount "${ROOTFS_IMG}" tmp
 sudo tar -xpf rootfs.tar -C tmp --xattrs --xattrs-include='*' --numeric-owner
 sudo umount tmp
 sudo rm -rf tmp
-qemu-img create -q -f qcow2 -F raw -b rootfs.img rootfs.qcow2
+chmod -w rootfs.img

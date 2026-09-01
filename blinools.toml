@@ -3,7 +3,7 @@ virtiofsd.binary = "/usr/libexec/virtiofsd"
 
 kernel = "/boot/vmlinuz-7.1.10-200.fc44.x86_64"
 kernel_cmdline = "fsck.mode=skip"
-rootfs = "./rootfs.qcow2"
+rootfs = "./rootfs.img"
 memory_mb = 8192
 cpus = 4
 dns = ["192.168.0.254"]
