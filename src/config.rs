@@ -34,7 +34,7 @@ pub fn parse_config(config_file: &str) -> Result<Option<Config>, anyhow::Error> 
         .add_source(
             config::File::from(config_dir().join("blinools").join("blinools.toml")).required(false),
         )
-        .add_source(config::File::with_name(config_file))
+        .add_source(config::File::with_name(config_file).required(false))
         .build()
         .context("reading config file")?
         .try_deserialize()
