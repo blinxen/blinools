@@ -67,7 +67,6 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             for share in merge_shares(config.shares.as_ref(), shares) {
                 mounts.push(FsMount::spawn(&name, config.virtiofsd.as_ref(), &share)?);
             }
-            // TODO: Handle error properly here
             let mut vmm = create_and_start_vm(
                 &name,
                 config,
@@ -143,7 +142,7 @@ pub fn create_and_start_vm(
         memory_mb: config.memory_mb,
         cpus: config.cpus,
         mounts,
-    })?;
+    }).context("creating sandbox")?;
 
     Ok(ch_vmm)
 }

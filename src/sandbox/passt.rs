@@ -33,7 +33,6 @@ impl PasstNetwork {
                 dns_config.push(d);
             }
         }
-        // TODO: socket needs to be cleanup
         let handle = Command::new(binary_path)
             .args([
                 "--vhost-user",
@@ -57,7 +56,6 @@ impl PasstNetwork {
                 "10.200.0.1",
             ])
             .args(dns_config)
-            // TODO: probably want to log this
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
