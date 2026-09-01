@@ -60,6 +60,7 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             name,
             recreate,
         } => {
+            ensure_unique_name(&name)?;
             setup_dirs_for_sandbox(&name)?;
             let passt_network =
                 passt::PasstNetwork::new(&name, config.passt.as_ref(), config.dns.as_ref())?;
@@ -89,6 +90,13 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
         }
     };
 
+    Ok(())
+}
+
+fn ensure_unique_name(name: &str) -> Result<(), anyhow::Error> {
+    if runtime_dir().join(name).exists() {
+        return Err(anyhow::anyhow!("a sandbox with the same name already exists"));
+    }
     Ok(())
 }
 
