@@ -77,6 +77,8 @@ pub fn create_vm(cfg: &CloudHypervisorVmConfig) -> Result<CloudHypervisor, anyho
         .arg("--kernel")
         .arg(cfg.kernel)
         .arg("--landlock")
+        .arg("--landlock-rules")
+        .arg(format!("path={},access=r", cfg.rootfs.display()))
         .arg("--disk")
         .arg(format!(
             "path={},image_type=qcow2,backing_files=on",
