@@ -159,6 +159,10 @@ fn shutdown_vm(
     config: Option<config::ChConfig>,
     sandbox_runtime_dir: &Path,
 ) -> Result<(), anyhow::Error> {
+    let socket_path = sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME);
+    if !socket_path.exists() {
+        return Ok(());
+    }
     let mut binary_path = PathBuf::from("ch-remote");
     if let Some(config) = config
         && let Some(binary) = config.ch_remote_binary
@@ -167,7 +171,7 @@ fn shutdown_vm(
     }
     cloud_hypervisor::shutdown_vm(
         &binary_path,
-        &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
+        &socket_path,
     )?;
     Ok(())
 }
