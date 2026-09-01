@@ -91,7 +91,7 @@ dns = ["192.168.1.1"]
 2. Create the sandbox
 
 ```bash
-cargo run sandbox create
+blinools sandbox create
 ```
 
 License
