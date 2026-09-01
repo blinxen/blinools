@@ -151,13 +151,13 @@ pub fn list_vms(binary_path: &Path) -> Result<(), anyhow::Error> {
         Vec::with_capacity(entries.size_hint().1.unwrap_or(0));
     for entry in entries {
         let sandbox_name = match entry {
-            Ok(entry) => entry.file_name(),
+            Ok(entry) => entry.file_name().display().to_string(),
             _ => continue,
         };
         let socket_path = runtime_dir().join(&sandbox_name).join(SOCKET_NAME);
         if !socket_path.exists() {
             sandbox_infos.push(SandboxInfo {
-                name: sandbox_name.to_string_lossy().to_string(),
+                name: sandbox_name,
                 state: String::from("stopped"),
             });
             continue;
@@ -170,12 +170,12 @@ pub fn list_vms(binary_path: &Path) -> Result<(), anyhow::Error> {
             .context("getting coud hypervisor info on sandbox")?;
         if let Ok(ch_info) = serde_json::from_slice::<ChInfo>(&output.stdout) {
             sandbox_infos.push(SandboxInfo {
-                name: sandbox_name.to_string_lossy().to_string(),
+                name: sandbox_name,
                 state: ch_info.state,
             });
         } else {
             sandbox_infos.push(SandboxInfo {
-                name: sandbox_name.to_string_lossy().to_string(),
+                name: sandbox_name,
                 state: String::from("unknown"),
             });
         }
