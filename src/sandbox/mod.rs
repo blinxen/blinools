@@ -191,7 +191,7 @@ pub fn create_qcow2_overlay(cfg: &CloudHypervisorVmConfig) -> Result<PathBuf, an
     Qcow2CreateBuilder::<imago::file::File>::new(image_file)
         .size(rootfs_size)
         .backing(
-            cfg.rootfs.to_string_lossy().to_string(),
+            cfg.rootfs.display().to_string(),
             cfg.rootfs_type.to_string(),
         )
         .create()
