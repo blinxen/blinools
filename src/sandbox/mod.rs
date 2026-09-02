@@ -35,7 +35,7 @@ pub enum Command {
         #[arg(short = 's', long = "share", value_name = "TAG:PATH:(ro|rw)", value_parser = config::parse_share)]
         shares: Vec<FsShare>,
         /// Sandbox name
-        name: String,
+        name: Option<String>,
         /// Recreate VM with the configured rootfs
         ///
         /// This will forcefully recreate the overlay containing all changes done since the last
@@ -68,16 +68,24 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             name,
             recreate,
         } => {
-            ensure_unique_name(&name)?;
-            setup_dirs_for_sandbox(&name)?;
-            let passt_network =
-                passt::PasstNetwork::new(&name, config.passt.as_ref(), config.dns.as_ref())?;
+            let sandbox_name = name.unwrap_or(config.name.to_string());
+            ensure_unique_name(&sandbox_name)?;
+            setup_dirs_for_sandbox(&sandbox_name)?;
+            let passt_network = passt::PasstNetwork::new(
+                &sandbox_name,
+                config.passt.as_ref(),
+                config.dns.as_ref(),
+            )?;
             let mut mounts = Vec::new();
             for share in merge_shares(config.shares.as_ref(), shares) {
-                mounts.push(FsMount::spawn(&name, config.virtiofsd.as_ref(), &share)?);
+                mounts.push(FsMount::spawn(
+                    &sandbox_name,
+                    config.virtiofsd.as_ref(),
+                    &share,
+                )?);
             }
             let mut vmm = create_and_start_vm(
-                &name,
+                &sandbox_name,
                 config,
                 passt_network.socket_path().clone(),
                 &mounts,
