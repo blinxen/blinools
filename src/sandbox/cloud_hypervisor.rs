@@ -18,10 +18,10 @@ pub struct CloudHypervisorVmConfig<'sandbox> {
     pub binary: &'sandbox Path,
     pub kernel: &'sandbox Path,
     pub rootfs: &'sandbox Path,
-    pub rootfs_type: RootfsType,
+    pub rootfs_type: &'sandbox RootfsType,
     pub reset_overlay: bool,
     pub network_socket: &'sandbox Path,
-    pub cmdline: String,
+    pub cmdline: &'sandbox str,
     pub memory_mb: u64,
     pub cpus: u8,
     pub mounts: &'sandbox Vec<FsMount>,
@@ -50,7 +50,7 @@ pub fn create_vm(cfg: &CloudHypervisorVmConfig) -> Result<CloudHypervisor, anyho
         "console=hvc0 root=/dev/vda rw systemd.hostname={} ",
         cfg.name
     );
-    cmdline.push_str(&cfg.cmdline);
+    cmdline.push_str(cfg.cmdline);
 
     for mount in cfg.mounts {
         mounts.push("--fs".into());

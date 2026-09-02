@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::sandbox::{config::PasstConfig, create_socket_path, kill_child_and_socket_with_timeout};
+use crate::sandbox::{config::Config, create_socket_path, kill_child_and_socket_with_timeout};
 
 pub struct PasstNetwork {
     handle: Child,
@@ -14,20 +14,16 @@ pub struct PasstNetwork {
 
 // TODO: Think about firewall here and how we can put another defense line
 impl PasstNetwork {
-    pub fn new(
-        sandbox_name: &str,
-        cfg: Option<&PasstConfig>,
-        dns: Option<&Vec<String>>,
-    ) -> Result<PasstNetwork, anyhow::Error> {
-        let socket_path = create_socket_path(sandbox_name, "passt.sock");
+    pub fn new(config: &Config) -> Result<PasstNetwork, anyhow::Error> {
+        let socket_path = create_socket_path(&config.name, "passt.sock");
         let mut binary_path = PathBuf::from("passt");
-        if let Some(cfg) = cfg
+        if let Some(cfg) = &config.passt
             && let Some(binary) = &cfg.binary
         {
             binary_path = binary.to_path_buf();
         }
         let mut dns_config: Vec<&str> = Vec::new();
-        if let Some(dns) = dns {
+        if let Some(dns) = &config.dns {
             for d in dns {
                 dns_config.push("--dns");
                 dns_config.push(d);
