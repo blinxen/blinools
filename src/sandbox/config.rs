@@ -30,7 +30,8 @@ pub struct Config {
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
-    pub kernel_cmdline: Option<String>,
+    #[serde(default)]
+    pub kernel_cmdline: String,
     #[garde(custom(path_exists))]
     pub rootfs: PathBuf,
     #[garde(skip)]
@@ -88,9 +89,7 @@ fn default_sandbox_name() -> String {
         .unwrap_or(Alphanumeric.sample_string(&mut rand::rng(), 16))
 }
 
-fn validate_kernel_cmdline(value: &Option<String>, _ctx: &()) -> garde::Result {
-    let Some(value) = value else { return Ok(()) };
-
+fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {
     if value.contains("console=") {
         return Err(garde::Error::new(
             "Kernel command line parameters must not configure `console`. `console` is hardcoded to `hvc0` and cannot be changed.",

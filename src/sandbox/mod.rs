@@ -42,6 +42,9 @@ pub enum Command {
         /// creation
         #[arg(long = "recreate", default_value_t = false)]
         recreate: bool,
+        /// When set then the sandbox will be deleted once it is shutdown
+        #[arg(long = "delete-after-shutdown", default_value_t = false)]
+        delete_after_shutdown: bool,
     },
     /// Shutdown a sandbox
     Shutdown {
@@ -58,7 +61,7 @@ pub enum Command {
     },
 }
 
-pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Error> {
+pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow::Error> {
     match command {
         Command::Ps => {
             list_vms()?;
@@ -67,26 +70,18 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             shares,
             name,
             recreate,
+            delete_after_shutdown,
         } => {
-            let sandbox_name = name.unwrap_or(config.name.to_string());
-            ensure_unique_name(&sandbox_name)?;
-            setup_dirs_for_sandbox(&sandbox_name)?;
-            let passt_network = passt::PasstNetwork::new(
-                &sandbox_name,
-                config.passt.as_ref(),
-                config.dns.as_ref(),
-            )?;
+            config.name = name.unwrap_or(config.name.to_string());
+            ensure_unique_name(&config.name)?;
+            setup_dirs_for_sandbox(&config.name)?;
+            let passt_network = passt::PasstNetwork::new(&config)?;
             let mut mounts = Vec::new();
             for share in merge_shares(config.shares.as_ref(), shares) {
-                mounts.push(FsMount::spawn(
-                    &sandbox_name,
-                    config.virtiofsd.as_ref(),
-                    &share,
-                )?);
+                mounts.push(FsMount::spawn(&config, &share)?);
             }
             let mut vmm = create_and_start_vm(
-                &sandbox_name,
-                config,
+                &config,
                 passt_network.socket_path().clone(),
                 &mounts,
                 recreate,
@@ -94,6 +89,10 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
 
             vmm.block_until_vm_shutsdown()
                 .context("waiting for sandbox to exit")?;
+
+            if delete_after_shutdown {
+                delete_sandbox(&config.name, true)?;
+            }
         }
         Command::Shutdown { name } => {
             shutdown_vm(&runtime_dir().join(name))?;
@@ -153,33 +152,60 @@ fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) 
     shares.into_values().collect()
 }
 
+fn delete_sandbox(name: &str, force: bool) -> Result<(), anyhow::Error> {
+    let sandbox_runtime_dir = runtime_dir().join(name);
+    let sandbox_state_dir = state_dir()?.join(name);
+
+    if !force
+        && cloud_hypervisor::can_connect_to_socket(
+            &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
+        )
+    {
+        eprintln!(
+            "can't delete a running sandbox, either use --force or shut the sandbox down and then try again"
+        );
+        return Ok(());
+    }
+
+    shutdown_vm(&sandbox_runtime_dir)?;
+    if sandbox_runtime_dir.exists() {
+        std::fs::remove_dir_all(sandbox_runtime_dir)
+            .context("cleaning up sandbox runtime directory")?;
+    }
+    if sandbox_state_dir.exists() {
+        std::fs::remove_dir_all(sandbox_state_dir)
+            .context("cleaning up sandbox state directory")?;
+    }
+
+    Ok(())
+}
+
 fn list_vms() -> Result<(), anyhow::Error> {
     cloud_hypervisor::list_vms(&runtime_dir())?;
     Ok(())
 }
 
 pub fn create_and_start_vm(
-    sandbox_name: &str,
-    config: config::Config,
+    config: &config::Config,
     network_socket: PathBuf,
     mounts: &Vec<FsMount>,
     reset_overlay: bool,
 ) -> Result<CloudHypervisor, anyhow::Error> {
     let mut binary_path = PathBuf::from("cloud-hypervisor");
-    if let Some(cloud_hypervisor) = config.cloud_hypervisor
-        && let Some(binary) = cloud_hypervisor.cloud_hypervisor_binary
+    if let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
+        && let Some(binary) = cloud_hypervisor.cloud_hypervisor_binary.as_ref()
     {
         binary_path = binary.to_path_buf();
     }
     let ch_vmm = cloud_hypervisor::create_vm(&cloud_hypervisor::CloudHypervisorVmConfig {
-        name: sandbox_name,
+        name: &config.name,
         binary: &binary_path,
         kernel: &config.kernel,
         rootfs: &config.rootfs,
-        rootfs_type: config.rootfs_type,
+        rootfs_type: &config.rootfs_type,
         reset_overlay,
         network_socket: &network_socket,
-        cmdline: config.kernel_cmdline.unwrap_or_default(),
+        cmdline: &config.kernel_cmdline,
         memory_mb: config.memory_mb,
         cpus: config.cpus,
         mounts,

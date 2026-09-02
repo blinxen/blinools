@@ -3,7 +3,7 @@ use std::process::{Child, Command, Stdio};
 
 use anyhow::Context;
 
-use crate::sandbox::config::{FsShare, VirtiofsdConfig};
+use crate::sandbox::config::{Config, FsShare};
 use crate::sandbox::{create_socket_path, kill_child_and_socket_with_timeout};
 
 #[derive(Debug)]
@@ -15,14 +15,10 @@ pub struct FsMount {
 }
 
 impl FsMount {
-    pub fn spawn(
-        sandbox_name: &str,
-        cfg: Option<&VirtiofsdConfig>,
-        share: &FsShare,
-    ) -> Result<Self, anyhow::Error> {
-        let socket_path = create_socket_path(sandbox_name, &format!("vfsd-{}.sock", share.name));
+    pub fn spawn(config: &Config, share: &FsShare) -> Result<Self, anyhow::Error> {
+        let socket_path = create_socket_path(&config.name, &format!("vfsd-{}.sock", share.name));
         let mut binary_path = PathBuf::from("virtiofsd");
-        if let Some(cfg) = cfg
+        if let Some(cfg) = &config.virtiofsd
             && let Some(binary) = &cfg.binary
         {
             binary_path = binary.to_path_buf();
