@@ -71,7 +71,7 @@ To create a sandbox, you will need a compiled Linux kernel and a rootfs.
 You don't *have* to actually compile your own kernel, you can just use whatever
 your Distro provides. The example configuration below uses the official Fedora 44 kernel.
 The rootfs can also be easily created using `podman` (or `docker`).
-See [Dockerfile.fedora](./Dockerfile.fedora) and [fedora-rootfs.sh](./scripts/fedora-rootfs.sh).
+Checkout the [examples](./example).
 
 The next steps assume you have a already compiled Linux kernel and a already built rootfs.
 
