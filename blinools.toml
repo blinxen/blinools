@@ -1,9 +1,9 @@
 [sandbox]
 virtiofsd.binary = "/usr/libexec/virtiofsd"
 
-kernel = "./kernel"
+kernel = "./examples/fedora/kernel"
 kernel_cmdline = "rw quiet"
-rootfs = "./rootfs.img"
+rootfs = "./examples/fedora/rootfs.img"
 memory_mb = 8192
 cpus = 4
 dns = ["192.168.0.254"]
