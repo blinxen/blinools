@@ -114,10 +114,14 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
             }
 
             shutdown_vm(&sandbox_runtime_dir)?;
-            std::fs::remove_dir_all(sandbox_runtime_dir)
-                .context("cleaning up sandbox runtime directory")?;
-            std::fs::remove_dir_all(sandbox_state_dir)
-                .context("cleaning up sandbox state directory")?;
+            if sandbox_runtime_dir.exists() {
+                std::fs::remove_dir_all(sandbox_runtime_dir)
+                    .context("cleaning up sandbox runtime directory")?;
+            }
+            if sandbox_state_dir.exists() {
+                std::fs::remove_dir_all(sandbox_state_dir)
+                    .context("cleaning up sandbox state directory")?;
+            }
         }
     };
 
