@@ -42,7 +42,6 @@ All optional fields have a comment that starts with "Optional".
 [sandbox]
 # Optional custom paths to the binary files
 cloud_hypervisor.cloud_hypervisor_binary = "/path/to/cloud-hypervisor"
-cloud_hypervisor.ch_remote_binary = "/path/to/cloud-hypervisor"
 passt.binary = "/path/to/passt"
 virtiofsd.binary = "/path/to/virtiofsd"
 # Path to the kernel
