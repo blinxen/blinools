@@ -48,12 +48,20 @@ pub enum Command {
         /// Sandbox name
         name: String,
     },
+    /// Delete a sandbox
+    Delete {
+        /// Sandbox name
+        name: String,
+        /// Forces a shutdown before deleting
+        #[arg(short = 'f', long = "force", default_value_t = false)]
+        force: bool,
+    },
 }
 
 pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Error> {
     match command {
         Command::Ps => {
-            list_vms(config.cloud_hypervisor)?;
+            list_vms()?;
         }
         Command::Create {
             shares,
@@ -80,13 +88,28 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
                 .context("waiting for sandbox to exit")?;
         }
         Command::Shutdown { name } => {
-            // At this stage, the runtime dir must exist otherwise the vm was not created properly
-            let sandbox_runtime_dir = runtime_dir().join(name);
-            if sandbox_runtime_dir.exists() {
-                shutdown_vm(config.cloud_hypervisor, &sandbox_runtime_dir)?;
-                std::fs::remove_dir_all(sandbox_runtime_dir)
-                    .context("cleaning up sandbox runtime directory")?;
+            shutdown_vm(&runtime_dir().join(name))?;
+        }
+        Command::Delete { name, force } => {
+            let sandbox_runtime_dir = runtime_dir().join(&name);
+            let sandbox_state_dir = state_dir()?.join(&name);
+
+            if !force
+                && cloud_hypervisor::can_connect_to_socket(
+                    &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
+                )
+            {
+                eprintln!(
+                    "can't delete a running sandbox, either use --force or shut the sandbox down and then try again"
+                );
+                return Ok(());
             }
+
+            shutdown_vm(&sandbox_runtime_dir)?;
+            std::fs::remove_dir_all(sandbox_runtime_dir)
+                .context("cleaning up sandbox runtime directory")?;
+            std::fs::remove_dir_all(sandbox_state_dir)
+                .context("cleaning up sandbox state directory")?;
         }
     };
 
@@ -94,8 +117,12 @@ pub fn handle(command: Command, config: config::Config) -> Result<(), anyhow::Er
 }
 
 fn ensure_unique_name(name: &str) -> Result<(), anyhow::Error> {
-    if runtime_dir().join(name).exists() {
-        return Err(anyhow::anyhow!("a sandbox with the same name already exists"));
+    if cloud_hypervisor::can_connect_to_socket(
+        &runtime_dir().join(name).join(cloud_hypervisor::SOCKET_NAME),
+    ) {
+        return Err(anyhow::anyhow!(
+            "a sandbox with the same name already exists"
+        ));
     }
     Ok(())
 }
@@ -114,14 +141,8 @@ fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) 
     shares.into_values().collect()
 }
 
-fn list_vms(config: Option<config::ChConfig>) -> Result<(), anyhow::Error> {
-    let mut binary_path = PathBuf::from("ch-remote");
-    if let Some(config) = config
-        && let Some(binary) = config.ch_remote_binary
-    {
-        binary_path = binary.to_path_buf();
-    }
-    cloud_hypervisor::list_vms(&binary_path)?;
+fn list_vms() -> Result<(), anyhow::Error> {
+    cloud_hypervisor::list_vms(&runtime_dir())?;
     Ok(())
 }
 
@@ -150,29 +171,14 @@ pub fn create_and_start_vm(
         memory_mb: config.memory_mb,
         cpus: config.cpus,
         mounts,
-    }).context("creating sandbox")?;
+    })
+    .context("creating sandbox")?;
 
     Ok(ch_vmm)
 }
 
-fn shutdown_vm(
-    config: Option<config::ChConfig>,
-    sandbox_runtime_dir: &Path,
-) -> Result<(), anyhow::Error> {
-    let socket_path = sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME);
-    if !socket_path.exists() {
-        return Ok(());
-    }
-    let mut binary_path = PathBuf::from("ch-remote");
-    if let Some(config) = config
-        && let Some(binary) = config.ch_remote_binary
-    {
-        binary_path = binary.to_path_buf();
-    }
-    cloud_hypervisor::shutdown_vm(
-        &binary_path,
-        &socket_path,
-    )?;
+fn shutdown_vm(sandbox_runtime_dir: &Path) -> Result<(), anyhow::Error> {
+    cloud_hypervisor::shutdown_vm(&sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME))?;
     Ok(())
 }
 

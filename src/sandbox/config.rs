@@ -64,8 +64,6 @@ pub struct FsShare {
 pub struct ChConfig {
     #[garde(custom(path_exists_optional))]
     pub cloud_hypervisor_binary: Option<PathBuf>,
-    #[garde(custom(path_exists_optional))]
-    pub ch_remote_binary: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Validate)]
