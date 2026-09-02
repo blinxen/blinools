@@ -2,7 +2,8 @@ mod config;
 mod sandbox;
 mod wip_pr;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 
 #[derive(Parser)]
 #[command(name = "blinools", about = "Common utilities blinxen uses")]
@@ -35,11 +36,16 @@ enum Commands {
         task_number: Option<String>,
     },
 
-    ///
     /// Manage sanboxes
     Sandbox {
         #[command(subcommand)]
         command: sandbox::Command,
+    },
+
+    /// Generate shell completion scripts
+    Completions {
+        #[arg(value_enum)]
+        shell: Shell,
     },
 }
 
@@ -63,6 +69,11 @@ fn main() -> Result<(), anyhow::Error> {
                 eprintln!("Could not find sandbox configuration");
                 std::process::exit(1);
             }
+        }
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            generate(shell, &mut cmd, name, &mut std::io::stdout());
         }
     };
 
