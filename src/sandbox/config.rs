@@ -1,10 +1,10 @@
+use garde::Validate;
+use rand::distr::{Alphanumeric, SampleString};
+use serde::Deserialize;
 use std::{
     fmt,
     path::{Path, PathBuf},
 };
-
-use garde::Validate;
-use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
 pub enum RootfsType {
@@ -24,6 +24,9 @@ impl fmt::Display for RootfsType {
 
 #[derive(Deserialize, Validate)]
 pub struct Config {
+    #[garde(skip)]
+    #[serde(default = "default_sandbox_name")]
+    pub name: String,
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
@@ -76,6 +79,13 @@ pub struct PasstConfig {
 pub struct VirtiofsdConfig {
     #[garde(custom(path_exists_optional))]
     pub binary: Option<PathBuf>,
+}
+
+fn default_sandbox_name() -> String {
+    std::env::current_dir()
+        .ok()
+        .and_then(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
+        .unwrap_or(Alphanumeric.sample_string(&mut rand::rng(), 16))
 }
 
 fn validate_kernel_cmdline(value: &Option<String>, _ctx: &()) -> garde::Result {
