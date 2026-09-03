@@ -4,7 +4,7 @@ set -eux
 ROOTFS_IMG="$(pwd)/rootfs.img"
 ROOTFS="$(pwd)/rootfs"
 
-podman build -f Dockerfile.fedora --target base -t fedora-microvm-rootfs .
+podman build --target base -t fedora-microvm-rootfs .
 
 podman create --name export-tmp fedora-microvm-rootfs
 podman export export-tmp -o rootfs.tar
@@ -22,6 +22,6 @@ sudo rm -f ./tmp/etc/resolv.conf
 sudo umount tmp
 sudo rm -rf tmp
 chmod -w "${ROOTFS_IMG}"
-docker build -f Dockerfile.fedora --target kernel --output type=local,dest=./out .
+docker build --target kernel --output type=local,dest=./out .
 mv out/kernel .
 rmdir out
