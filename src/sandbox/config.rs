@@ -57,7 +57,7 @@ pub struct Config {
 pub struct FsShare {
     #[garde(custom(path_exists))]
     pub host_dir: PathBuf,
-    #[garde(alphanumeric)]
+    #[garde(ascii)]
     pub name: String,
     #[garde(skip)]
     #[serde(default)]
