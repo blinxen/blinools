@@ -131,28 +131,41 @@ fn path_exists_optional(value: &Option<PathBuf>, _ctx: &()) -> garde::Result {
 
 // Used only by clap parser
 pub fn parse_share(s: &str) -> Result<FsShare, String> {
-    let (name, rest) = s
-        .split_once(':')
-        .ok_or_else(|| format!("invalid share `{s}`, expected TAG:PATH:(ro|rw)"))?;
+    let usage =
+        || format!("invalid share `{s}`, expected PATH, PATH:(ro|rw), or NAME:PATH:(ro|rw)");
 
-    let (path, mode) = rest
-        .rsplit_once(':')
-        .ok_or_else(|| format!("invalid share `{s}`, expected TAG:PATH:(ro|rw)"))?;
+    let parts: Vec<&str> = s.split(':').collect();
+    let (name, path, mode): (Option<&str>, &str, Option<&str>) = match parts.as_slice() {
+        [path] => (None, path, None),
+        [path, mode] => (None, path, Some(mode)),
+        [name, path, mode] => (Some(name), path, Some(mode)),
+        _ => return Err(usage()),
+    };
 
     let read_only = match mode {
-        "ro" => true,
-        "rw" => false,
-        other => return Err(format!("invalid mode `{other}`, expected `ro` or `rw`")),
+        None => false,
+        Some("ro") => true,
+        Some("rw") => false,
+        Some(other) => return Err(format!("invalid mode `{other}`, expected `ro` or `rw`")),
+    };
+
+    let host_dir =
+        std::fs::canonicalize(path).map_err(|_| String::from("could not make path absolute"))?;
+    let name = match name {
+        Some(n) => n.to_owned(),
+        None => host_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(String::from)
+            .unwrap_or_else(|| Alphanumeric.sample_string(&mut rand::rng(), 16)),
     };
 
     let share = FsShare {
-        host_dir: PathBuf::from(path),
-        name: name.to_owned(),
+        host_dir,
+        name,
         read_only,
     };
-
     share.validate().map_err(|e| e.to_string())?;
-
     Ok(share)
 }
 

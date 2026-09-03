@@ -31,8 +31,14 @@ pub enum Command {
     Ps,
     /// Create and start a sandbox
     Create {
-        /// Add a filesystem share: TAG:PATH:(ro|rw). Can be passed multiple times.
-        #[arg(short = 's', long = "share", value_name = "TAG:PATH:(ro|rw)", value_parser = config::parse_share)]
+        /// Add a filesystem share. Can be passed multiple times.
+        ///
+        /// The following formats are accepted:
+        ///
+        /// PATH
+        /// PATH:(rw|ro)
+        /// NAME:PATH:(rw|ro)
+        #[arg(short = 's', long = "share", value_parser = config::parse_share)]
         shares: Vec<FsShare>,
         /// Sandbox name
         name: Option<String>,
