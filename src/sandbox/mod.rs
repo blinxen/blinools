@@ -199,7 +199,7 @@ pub fn create_and_start_vm(
 ) -> Result<CloudHypervisor, anyhow::Error> {
     let mut binary_path = PathBuf::from("cloud-hypervisor");
     if let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
-        && let Some(binary) = cloud_hypervisor.cloud_hypervisor_binary.as_ref()
+        && let Some(binary) = cloud_hypervisor.binary.as_ref()
     {
         binary_path = binary.to_path_buf();
     }
