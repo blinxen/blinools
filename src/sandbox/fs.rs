@@ -23,6 +23,9 @@ impl FsMount {
         {
             binary_path = binary.to_path_buf();
         }
+
+        let (host_uid, host_gid) = unsafe { (libc::getuid(), libc::getgid()) };
+
         let mut cmd = Command::new(binary_path);
         cmd.arg("--socket-path")
             .arg(&socket_path)
@@ -33,7 +36,17 @@ impl FsMount {
             .arg("--cache")
             .arg("never")
             .arg("--tag")
-            .arg(&share.name);
+            .arg(share.name.as_str())
+            // Looks like weird mappings but this way we make sure the guest cannot set weird UID /
+            // GID that get pushed back to the HOST
+            .arg("--translate-uid")
+            .arg(format!("squash-guest:0:{host_uid}:{ALL_POSSIBLE_UIDS}"))
+            .arg("--translate-gid")
+            .arg(format!("squash-guest:0:{host_gid}:{ALL_POSSIBLE_UIDS}"))
+            .arg("--translate-uid")
+            .arg(format!("squash-host:0:{}:{ALL_POSSIBLE_UIDS}", config.sandbox_user_uid))
+            .arg("--translate-gid")
+            .arg(format!("squash-host:0:{}:{ALL_POSSIBLE_UIDS}", config.sandbox_user_gid));
         if share.read_only {
             cmd.arg("--readonly");
         }
