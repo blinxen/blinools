@@ -46,6 +46,12 @@ pub struct Config {
     pub cpus: u8,
     #[garde(dive)]
     pub shares: Option<Vec<FsShare>>,
+    #[garde(skip)]
+    #[serde(default = "default_guest_uid_gid")]
+    pub sandbox_user_uid: u32,
+    #[garde(skip)]
+    #[serde(default = "default_guest_uid_gid")]
+    pub sandbox_user_gid: u32,
     #[garde(inner(inner(ip)))]
     pub dns: Option<Vec<String>>,
     #[garde(dive)]
