@@ -1,14 +1,19 @@
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::time::Duration;
 
 use anyhow::Context;
 
 use crate::sandbox::config::{Config, FsShare};
-use crate::sandbox::{create_socket_path, kill_child_and_socket_with_timeout};
+use crate::sandbox::name::Name;
+use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, wait_for_socket};
+use crate::sandbox::unique_socket_path;
+
+const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
 
 #[derive(Debug)]
 pub struct FsMount {
-    pub tag: String,
+    pub tag: Name,
     pub socket_path: PathBuf,
     pub read_only: bool,
     handle: Child,
@@ -16,7 +21,7 @@ pub struct FsMount {
 
 impl FsMount {
     pub fn spawn(config: &Config, share: &FsShare) -> Result<Self, anyhow::Error> {
-        let socket_path = create_socket_path(&config.name, &format!("vfsd-{}.sock", share.name));
+        let socket_path = unique_socket_path(&config.name, &format!("vfsd-{}", share.name));
         let mut binary_path = PathBuf::from("virtiofsd");
         if let Some(cfg) = &config.virtiofsd
             && let Some(binary) = &cfg.binary
@@ -53,9 +58,14 @@ impl FsMount {
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::null());
         cmd.stderr(Stdio::null());
+        die_with_parent(&mut cmd);
 
-        let child = cmd.spawn().context("spawning virtiofsd")?;
-        // TODO: Maybe wait some time for socket to be created here
+        let mut child = cmd.spawn().context("spawning virtiofsd")?;
+        if let Err(error) = wait_for_socket(&socket_path, &mut child, Duration::from_secs(10)) {
+            kill_child_and_cleanup(&mut child, &[&socket_path]);
+            return Err(error).with_context(|| format!("sharing `{}`", share.host_dir.display()));
+        }
+
         Ok(FsMount {
             tag: share.name.clone(),
             socket_path,
@@ -67,6 +77,6 @@ impl FsMount {
 
 impl Drop for FsMount {
     fn drop(&mut self) {
-        kill_child_and_socket_with_timeout(&mut self.handle, &self.socket_path);
+        kill_child_and_cleanup(&mut self.handle, &[&self.socket_path]);
     }
 }

@@ -283,6 +283,12 @@ pub fn setup_dirs_for_sandbox(name: &str) -> Result<(), anyhow::Error> {
     let runtime = runtime_dir().join(name);
     std::fs::create_dir_all(&runtime).context("creating runtime directory for sandbox")?;
     std::fs::set_permissions(runtime, std::fs::Permissions::from_mode(0o700))?;
+}
+
+// Must be unique because sock files won't get cleanup if the process exits unexpectedly
+pub fn unique_socket_path(sandbox_name: &Name, prefix: &str) -> PathBuf {
+    runtime_dir().join(sandbox_name).join(format!("{prefix}-{}.sock", std::process::id()))
+}
 
     let state = state_dir()?.join(name);
     std::fs::create_dir_all(&state).context("creating state directory for sandbox")?;
