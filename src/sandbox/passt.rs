@@ -1,21 +1,27 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    time::Duration,
 };
 
 use anyhow::Context;
 
-use crate::sandbox::{config::Config, create_socket_path, kill_child_and_socket_with_timeout};
+use crate::sandbox::netns::NetworkNamespace;
+use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, wait_for_socket};
+use crate::sandbox::{config::Config, unique_socket_path};
+
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct PasstNetwork {
     handle: Child,
     socket_path: PathBuf,
 }
 
-// TODO: Think about firewall here and how we can put another defense line
 impl PasstNetwork {
-    pub fn new(config: &Config) -> Result<PasstNetwork, anyhow::Error> {
-        let socket_path = create_socket_path(&config.name, "passt.sock");
+    pub fn new(
+        config: &Config,
+    ) -> Result<PasstNetwork, anyhow::Error> {
+        let socket_path = unique_socket_path(&config.name, "passt");
         let mut binary_path = PathBuf::from("passt");
         if let Some(cfg) = &config.passt
             && let Some(binary) = &cfg.binary
@@ -29,7 +35,10 @@ impl PasstNetwork {
                 dns_config.push(d);
             }
         }
-        let handle = Command::new(binary_path)
+
+        let mut command = Command::new(binary_path);
+        // TODO: Probably want to enter a network namespace before starting passt
+        command
             .args([
                 "--vhost-user",
                 "--socket",
@@ -54,9 +63,14 @@ impl PasstNetwork {
             .args(dns_config)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .context("spawing passt")?;
+            .stderr(Stdio::null());
+        die_with_parent(&mut command);
+
+        let mut handle = command.spawn().context("spawing passt")?;
+        if let Err(error) = wait_for_socket(&socket_path, &mut handle, SOCKET_TIMEOUT) {
+            kill_child_and_cleanup(&mut handle, &[&socket_path]);
+            return Err(error).context("starting the sandbox network");
+        }
 
         Ok(PasstNetwork {
             handle,
@@ -64,13 +78,13 @@ impl PasstNetwork {
         })
     }
 
-    pub fn socket_path(&self) -> &PathBuf {
+    pub fn socket_path(&self) -> &Path {
         &self.socket_path
     }
 }
 
 impl Drop for PasstNetwork {
     fn drop(&mut self) {
-        kill_child_and_socket_with_timeout(&mut self.handle, &self.socket_path);
+        kill_child_and_cleanup(&mut self.handle, &[&self.socket_path]);
     }
 }
