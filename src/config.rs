@@ -10,15 +10,20 @@ use serde::Deserialize;
 use crate::sandbox;
 
 #[derive(Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[garde[dive]]
     pub sandbox: Option<sandbox::config::Config>,
 }
 
 pub fn runtime_dir() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from("/run/user")
-        .join(uid.to_string())
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let uid = unsafe { libc::getuid() };
+            PathBuf::from("/run/user").join(uid.to_string())
+        })
         .join("blinools")
 }
 
@@ -32,22 +37,14 @@ pub fn state_dir() -> Result<PathBuf, anyhow::Error> {
 }
 
 pub fn setup_dirs() -> Result<(), anyhow::Error> {
-    // /run/user/<UID>/blinools
-    let runtime = runtime_dir();
-    std::fs::create_dir_all(&runtime).context("creating runtime directory")?;
-    std::fs::set_permissions(runtime, std::fs::Permissions::from_mode(0o700))?;
-
-    // HOME/.local/state/blinools/
-    let state = state_dir()?;
-    std::fs::create_dir_all(&state).context("creating state directory")?;
-    std::fs::set_permissions(state, std::fs::Permissions::from_mode(0o700))?;
+    create_dir(&runtime_dir()).context("creating runtime directory")?;
+    create_dir(&state_dir()?).context("creating state directory")?;
 
     Ok(())
 }
 
-pub fn parse_config(config_file: &str) -> Result<Option<Config>, anyhow::Error> {
+pub fn parse_config(config_file: &str) -> Result<Config, anyhow::Error> {
     let mut config: Config = config::Config::builder()
-        // HOME/.config/blinools/blinools.toml
         .add_source(config::File::from(config_dir().join("blinools.toml")).required(false))
         .add_source(config::File::with_name(config_file).required(false))
         .build()
@@ -66,7 +63,7 @@ pub fn parse_config(config_file: &str) -> Result<Option<Config>, anyhow::Error> 
             }
         }
     }
-    Ok(Some(config))
+    Ok(config)
 }
 
 fn make_path_absolute(path: &Path) -> Result<PathBuf, anyhow::Error> {

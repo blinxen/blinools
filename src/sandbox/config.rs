@@ -1,12 +1,14 @@
 use garde::Validate;
-use rand::distr::{Alphanumeric, SampleString};
 use serde::Deserialize;
 use std::{
     fmt,
     path::{Path, PathBuf},
 };
 
+use crate::sandbox::name::Name;
+
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub enum RootfsType {
     #[default]
     Raw,
@@ -23,10 +25,11 @@ impl fmt::Display for RootfsType {
 }
 
 #[derive(Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[garde(skip)]
     #[serde(default = "default_sandbox_name")]
-    pub name: String,
+    pub name: Name,
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
@@ -46,47 +49,47 @@ pub struct Config {
     #[garde(inner(inner(ip)))]
     pub dns: Option<Vec<String>>,
     #[garde(dive)]
-    pub cloud_hypervisor: Option<ChConfig>,
+    pub cloud_hypervisor: Option<BinaryConfig>,
     #[garde(dive)]
-    pub passt: Option<PasstConfig>,
+    pub passt: Option<BinaryConfig>,
     #[garde(dive)]
-    pub virtiofsd: Option<VirtiofsdConfig>,
+    pub pasta: Option<BinaryConfig>,
+    #[garde(dive)]
+    pub virtiofsd: Option<BinaryConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
 pub struct FsShare {
     #[garde(custom(path_exists))]
     pub host_dir: PathBuf,
-    #[garde(ascii)]
-    pub name: String,
+    #[garde(skip)]
+    pub name: Name,
     #[garde(skip)]
     #[serde(default)]
     pub read_only: bool,
 }
 
 #[derive(Deserialize, Validate)]
-pub struct ChConfig {
+#[serde(deny_unknown_fields)]
+pub struct BinaryConfig {
     #[garde(custom(path_exists_optional))]
     pub binary: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Validate)]
-pub struct PasstConfig {
-    #[garde(custom(path_exists_optional))]
-    pub binary: Option<PathBuf>,
-}
-
-#[derive(Deserialize, Validate)]
-pub struct VirtiofsdConfig {
-    #[garde(custom(path_exists_optional))]
-    pub binary: Option<PathBuf>,
-}
-
-fn default_sandbox_name() -> String {
+fn default_sandbox_name() -> Name {
     std::env::current_dir()
         .ok()
-        .and_then(|p| p.file_name().and_then(|s| s.to_str()).map(String::from))
-        .unwrap_or(Alphanumeric.sample_string(&mut rand::rng(), 16))
+        .and_then(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .and_then(Name::sanitize)
+        })
+        .unwrap_or_else(Name::randomized)
+}
+
+fn default_guest_uid_gid() -> u32 {
+    1000
 }
 
 fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {
@@ -152,12 +155,12 @@ pub fn parse_share(s: &str) -> Result<FsShare, String> {
     let host_dir =
         std::fs::canonicalize(path).map_err(|_| String::from("could not make path absolute"))?;
     let name = match name {
-        Some(n) => n.to_owned(),
+        Some(name) => Name::new(name).map_err(|error| format!("invalid share {error}"))?,
         None => host_dir
             .file_name()
-            .and_then(|s| s.to_str())
-            .map(String::from)
-            .unwrap_or_else(|| Alphanumeric.sample_string(&mut rand::rng(), 16)),
+            .and_then(|name| name.to_str())
+            .and_then(Name::sanitize)
+            .unwrap_or_else(Name::randomized),
     };
 
     let share = FsShare {
@@ -177,7 +180,7 @@ mod tests {
     #[test]
     fn path_exists_accepts_real_dir() {
         let dir = tempdir().unwrap();
-        assert!(path_exists(&dir.path().to_path_buf(), &()).is_ok());
+        assert!(path_exists(dir.path(), &()).is_ok());
         assert!(path_exists_optional(&Some(dir.path().to_path_buf()), &()).is_ok());
     }
 
@@ -195,5 +198,29 @@ mod tests {
     #[test]
     fn path_exists_optional_accepts_none() {
         assert!(path_exists_optional(&None, &()).is_ok());
+    }
+
+    #[test]
+    fn parse_share_rejects_names_that_are_not_path_components() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().display();
+        assert!(parse_share(&format!("../../etc:{path}:rw")).is_err());
+        assert!(parse_share(&format!("a init=-bin-sh:{path}:rw")).is_err());
+    }
+
+    #[test]
+    fn parse_share_accepts_every_documented_form() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().display().to_string();
+
+        let share = parse_share(&path).unwrap();
+        assert!(!share.read_only);
+
+        let share = parse_share(&format!("{path}:ro")).unwrap();
+        assert!(share.read_only);
+
+        let share = parse_share(&format!("data:{path}:rw")).unwrap();
+        assert_eq!(share.name.as_str(), "data");
+        assert!(!share.read_only);
     }
 }

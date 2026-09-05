@@ -2,6 +2,7 @@ mod config;
 mod sandbox;
 mod wip_pr;
 
+use anyhow::Context;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{Shell, generate};
 
@@ -51,8 +52,6 @@ enum Commands {
 
 fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
-    let config = config::parse_config(&cli.config_file)?;
-    config::setup_dirs()?;
 
     match cli.command {
         Commands::WipPr {
@@ -61,14 +60,13 @@ fn main() -> Result<(), anyhow::Error> {
             task_number,
         } => wip_pr::create(&branch_name, branch_type.as_deref(), task_number.as_deref())?,
         Commands::Sandbox { command } => {
-            if let Some(config) = config
-                && let Some(sandbox_config) = config.sandbox
-            {
-                sandbox::handle(command, sandbox_config)?
-            } else {
-                eprintln!("Could not find sandbox configuration");
-                std::process::exit(1);
-            }
+            let config = config::parse_config(&cli.config_file)?;
+            config::setup_dirs()?;
+
+            let sandbox_config = config
+                .sandbox
+                .context("the configuration has no `sandbox` section")?;
+            sandbox::handle(command, sandbox_config)?
         }
         Commands::Completions { shell } => {
             let mut cmd = Cli::command();
