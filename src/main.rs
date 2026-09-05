@@ -1,10 +1,11 @@
 mod config;
+mod console;
 mod sandbox;
 mod wip_pr;
 
 use anyhow::Context;
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{Shell, generate};
+use clap_complete::{CompleteEnv, Shell, env::Shells};
 
 #[derive(Parser)]
 #[command(name = "blinools", about = "Common utilities blinxen uses")]
@@ -51,6 +52,8 @@ enum Commands {
 }
 
 fn main() -> Result<(), anyhow::Error> {
+    CompleteEnv::with_factory(Cli::command).complete();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -69,9 +72,16 @@ fn main() -> Result<(), anyhow::Error> {
             sandbox::handle(command, sandbox_config)?
         }
         Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            let name = cmd.get_name().to_string();
-            generate(shell, &mut cmd, name, &mut std::io::stdout());
+            let shell = shell.to_string();
+            let shells = Shells::builtins();
+            let completer = shells
+                .completer(&shell)
+                .with_context(|| format!("no completion support for `{shell}`"))?;
+            let name = Cli::command().get_name().to_string();
+
+            completer
+                .write_registration("COMPLETE", &name, &name, &name, &mut std::io::stdout())
+                .context("generating the completion script")?;
         }
     };
 

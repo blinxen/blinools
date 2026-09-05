@@ -7,10 +7,9 @@ edition = "2024"
 [dependencies]
 anyhow = { version = "1" }
 clap = { version = "4", features = ["derive"] }
-clap_complete = "4"
+clap_complete = { version = "4", features = ["unstable-dynamic"] }
 config = { version = "0.15", default-features = false, features = ["toml"] }
 garde = { version = "0.23", features = ["derive"] }
-gix = { version = "0.86", default-features = false, features = ["sha1", "worktree-mutation", "index"] }
 imago = { version = "0.2", default-features = false, features = ["sync"] }
 libc = "0.2"
 rand = { version = "0.10.2" }
