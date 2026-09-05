@@ -87,7 +87,7 @@ RUN groupadd -f "${VM_USER}" && \
 # ========================================================================== #
 # Cleanup                                                                    #
 # ========================================================================== #
-RUN rm -rf /var/lib/dnf/history* /varlog/dnf* /tmp/* && \
+RUN rm -rf /var/lib/dnf/history* /var/log/dnf* /tmp/* && \
     rm -f /etc/machine-id && touch /etc/machine-id
 
 FROM scratch AS kernel
