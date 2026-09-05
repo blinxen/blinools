@@ -10,7 +10,7 @@ podman create --name export-tmp fedora-microvm-rootfs
 podman export export-tmp -o rootfs.tar
 podman rm export-tmp
 
-chmod +w "${ROOTFS_IMG}"
+rm -f "${ROOTFS_IMG}"
 truncate -s 5G "${ROOTFS_IMG}"
 mkfs.ext4 -L rootfs -F "${ROOTFS_IMG}"
 
@@ -22,6 +22,6 @@ sudo rm -f ./tmp/etc/resolv.conf
 sudo umount tmp
 sudo rm -rf tmp
 chmod -w "${ROOTFS_IMG}"
-docker build --target kernel --output type=local,dest=./out .
+podman build --target kernel --output type=local,dest=./out .
 mv out/kernel .
 rmdir out
