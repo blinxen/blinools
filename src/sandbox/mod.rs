@@ -1,29 +1,34 @@
-mod cloud_hypervisor;
+mod console;
 mod fs;
+mod lock;
 mod passt;
+mod process;
 
 pub mod config;
+pub mod hypervisor;
+pub mod name;
 
-use std::{
-    collections::HashMap,
-    os::unix::fs::{MetadataExt, PermissionsExt},
-    path::{Path, PathBuf},
-    process::Child,
-};
+use std::{collections::HashMap, ffi::OsStr, path::PathBuf};
 
 use anyhow::Context;
 use clap::Subcommand;
-use imago::{FormatCreateBuilder, Storage, qcow2::Qcow2CreateBuilder};
-use wait_timeout::ChildExt;
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
+use tabled::{Table, Tabled};
 
 use crate::{
-    config::{runtime_dir, state_dir},
+    config::{create_dir, runtime_dir, state_dir},
     sandbox::{
-        cloud_hypervisor::{CloudHypervisor, CloudHypervisorVmConfig},
-        config::{FsShare, RootfsType},
+        config::FsShare,
+        console::{Console, ConsoleExit},
         fs::FsMount,
+        hypervisor::{Hypervisor, VmConfig},
+        lock::SandboxLock,
+        name::Name,
     },
 };
+
+// On Linux we can't have a bigger path length
+const MAX_SOCKET_PATH_LENGTH: usize = 107;
 
 #[derive(Subcommand)]
 pub enum Command {
@@ -41,7 +46,8 @@ pub enum Command {
         #[arg(short = 's', long = "share", value_parser = config::parse_share)]
         shares: Vec<FsShare>,
         /// Sandbox name
-        name: Option<String>,
+        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        name: Option<Name>,
         /// Recreate VM with the configured rootfs
         ///
         /// This will forcefully recreate the overlay containing all changes done since the last
@@ -55,12 +61,14 @@ pub enum Command {
     /// Shutdown a sandbox
     Shutdown {
         /// Sandbox name
-        name: String,
+        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        name: Name,
     },
     /// Delete a sandbox
     Delete {
         /// Sandbox name
-        name: String,
+        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        name: Name,
         /// Forces a shutdown before deleting
         #[arg(short = 'f', long = "force", default_value_t = false)]
         force: bool,
@@ -68,9 +76,11 @@ pub enum Command {
 }
 
 pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow::Error> {
+    let hypervisor = hypervisor::new(&config);
+
     match command {
         Command::Ps => {
-            list_vms()?;
+            list_sandboxes(hypervisor.as_ref())?;
         }
         Command::Create {
             shares,
@@ -78,102 +88,102 @@ pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow
             recreate,
             delete_after_shutdown,
         } => {
-            config.name = name.unwrap_or(config.name.to_string());
-            ensure_unique_name(&config.name)?;
-            setup_dirs_for_sandbox(&config.name)?;
-            let passt_network = passt::PasstNetwork::new(&config)?;
-            let mut mounts = Vec::new();
-            for share in merge_shares(config.shares.as_ref(), shares) {
-                mounts.push(FsMount::spawn(&config, &share)?);
-            }
-            let mut vmm = create_and_start_vm(
-                &config,
-                passt_network.socket_path().clone(),
-                &mounts,
+            create_sandbox(
+                &mut config,
+                hypervisor,
+                shares,
+                name,
                 recreate,
+                delete_after_shutdown,
             )?;
-
-            vmm.block_until_vm_shutsdown()
-                .context("waiting for sandbox to exit")?;
-
-            if delete_after_shutdown {
-                delete_sandbox(&config.name, true)?;
-            }
         }
         Command::Shutdown { name } => {
-            shutdown_vm(&runtime_dir().join(name))?;
+            hypervisor.shutdown(&runtime_dir().join(&name))?;
         }
         Command::Delete { name, force } => {
-            let sandbox_runtime_dir = runtime_dir().join(&name);
-            let sandbox_state_dir = state_dir()?.join(&name);
-
-            if !force
-                && cloud_hypervisor::can_connect_to_socket(
-                    &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
-                )
-            {
-                eprintln!(
-                    "can't delete a running sandbox, either use --force or shut the sandbox down and then try again"
-                );
-                return Ok(());
-            }
-
-            shutdown_vm(&sandbox_runtime_dir)?;
-            if sandbox_runtime_dir.exists() {
-                std::fs::remove_dir_all(sandbox_runtime_dir)
-                    .context("cleaning up sandbox runtime directory")?;
-            }
-            if sandbox_state_dir.exists() {
-                std::fs::remove_dir_all(sandbox_state_dir)
-                    .context("cleaning up sandbox state directory")?;
-            }
+            delete_sandbox(hypervisor.as_ref(), &name, force)?;
         }
     };
 
     Ok(())
 }
 
-fn ensure_unique_name(name: &str) -> Result<(), anyhow::Error> {
-    if cloud_hypervisor::can_connect_to_socket(
-        &runtime_dir().join(name).join(cloud_hypervisor::SOCKET_NAME),
-    ) {
-        return Err(anyhow::anyhow!(
-            "a sandbox with the same name already exists"
-        ));
+fn create_sandbox(
+    config: &mut config::Config,
+    hypervisor: Box<dyn Hypervisor>,
+    shares: Vec<FsShare>,
+    name: Option<Name>,
+    recreate: bool,
+    delete_after_shutdown: bool,
+) -> Result<(), anyhow::Error> {
+    if let Some(name) = name {
+        config.name = name;
     }
+    ensure_unique_name(hypervisor.as_ref(), &config.name)?;
+    let lock = SandboxLock::try_acquire(&config.name)?
+        .context("failed to acquire lock, a sandbox with the same name is already running")?;
+    create_dir(&runtime_dir().join(&config.name))
+        .context("creating runtime directory for sandbox")?;
+    create_dir(&state_dir()?.join(&config.name)).context("creating state directory for sandbox")?;
+
+    let shares = merge_shares(config.shares.as_ref(), shares);
+    validate_socket_path_lengths(&config.name, &shares)?;
+
+    {
+        let passt_network = passt::PasstNetwork::new(config)?;
+        let mut mounts = Vec::new();
+        for share in &shares {
+            mounts.push(FsMount::spawn(config, share)?);
+        }
+
+        let mut console = Console::new()?;
+        let mut vm = hypervisor.boot(VmConfig {
+            name: &config.name,
+            kernel: &config.kernel,
+            rootfs: &config.rootfs,
+            rootfs_type: &config.rootfs_type,
+            reset_overlay: recreate,
+            network_socket: passt_network.socket_path(),
+            cmdline: &config.kernel_cmdline,
+            memory_mb: config.memory_mb,
+            cpus: config.cpus,
+            mounts: &mounts,
+            console: console.take_slave()?,
+        })?;
+
+        match console.read_until_terminated()? {
+            ConsoleExit::GuestGone => {
+                vm.wait().context("waiting for sandbox to exit")?;
+            }
+            ConsoleExit::Terminated => vm.terminate(),
+        }
+    }
+
+    // Drop must happen here because delete will try to acquire the lock too
+    drop(lock);
+    if delete_after_shutdown {
+        delete_sandbox(hypervisor.as_ref(), &config.name, true)?;
+    }
+
     Ok(())
 }
 
-fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) -> Vec<FsShare> {
-    let mut shares: HashMap<String, FsShare> = config_shares
-        .unwrap_or(&Vec::new())
-        .iter()
-        .map(|s| (s.name.clone(), s.clone()))
-        .collect();
-
-    for cli_share in cli_shares {
-        shares.insert(cli_share.name.clone(), cli_share);
-    }
-
-    shares.into_values().collect()
-}
-
-fn delete_sandbox(name: &str, force: bool) -> Result<(), anyhow::Error> {
+fn delete_sandbox(
+    hypervisor: &dyn Hypervisor,
+    name: &Name,
+    force: bool,
+) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(name);
     let sandbox_state_dir = state_dir()?.join(name);
 
-    if !force
-        && cloud_hypervisor::can_connect_to_socket(
-            &sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME),
-        )
-    {
-        eprintln!(
+    let lock = SandboxLock::try_acquire(name)?;
+    if !force && (lock.is_none() || hypervisor.is_running(&sandbox_runtime_dir)) {
+        return Err(anyhow::anyhow!(
             "can't delete a running sandbox, either use --force or shut the sandbox down and then try again"
-        );
-        return Ok(());
+        ));
     }
 
-    shutdown_vm(&sandbox_runtime_dir)?;
+    hypervisor.shutdown(&sandbox_runtime_dir)?;
     if sandbox_runtime_dir.exists() {
         std::fs::remove_dir_all(sandbox_runtime_dir)
             .context("cleaning up sandbox runtime directory")?;
@@ -186,113 +196,145 @@ fn delete_sandbox(name: &str, force: bool) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn list_vms() -> Result<(), anyhow::Error> {
-    cloud_hypervisor::list_vms(&runtime_dir())?;
+#[derive(Tabled)]
+pub struct SandboxInfo {
+    pub name: String,
+    pub state: String,
+}
+
+fn list_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
+    let base_dir = runtime_dir();
+    let sandbox_infos: Vec<SandboxInfo> = existing_sandbox_names()
+        .into_iter()
+        .map(|name| SandboxInfo {
+            state: hypervisor.state(&base_dir.join(&name)).to_string(),
+            name,
+        })
+        .collect();
+
+    println!("{}", Table::new(sandbox_infos));
+
     Ok(())
 }
 
-pub fn create_and_start_vm(
-    config: &config::Config,
-    network_socket: PathBuf,
-    mounts: &Vec<FsMount>,
-    reset_overlay: bool,
-) -> Result<CloudHypervisor, anyhow::Error> {
-    let mut binary_path = PathBuf::from("cloud-hypervisor");
-    if let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
-        && let Some(binary) = cloud_hypervisor.binary.as_ref()
-    {
-        binary_path = binary.to_path_buf();
+fn ensure_unique_name(hypervisor: &dyn Hypervisor, name: &Name) -> Result<(), anyhow::Error> {
+    if hypervisor.is_running(&runtime_dir().join(name)) {
+        return Err(anyhow::anyhow!(
+            "a sandbox with the same name already exists"
+        ));
     }
-    let ch_vmm = cloud_hypervisor::create_vm(&cloud_hypervisor::CloudHypervisorVmConfig {
-        name: &config.name,
-        binary: &binary_path,
-        kernel: &config.kernel,
-        rootfs: &config.rootfs,
-        rootfs_type: &config.rootfs_type,
-        reset_overlay,
-        network_socket: &network_socket,
-        cmdline: &config.kernel_cmdline,
-        memory_mb: config.memory_mb,
-        cpus: config.cpus,
-        mounts,
-    })
-    .context("creating sandbox")?;
-
-    Ok(ch_vmm)
-}
-
-fn shutdown_vm(sandbox_runtime_dir: &Path) -> Result<(), anyhow::Error> {
-    cloud_hypervisor::shutdown_vm(&sandbox_runtime_dir.join(cloud_hypervisor::SOCKET_NAME))?;
     Ok(())
 }
 
-pub fn create_socket_path(sandbox_name: &str, socket_name: &str) -> PathBuf {
-    runtime_dir().join(sandbox_name).join(socket_name)
-}
+fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) -> Vec<FsShare> {
+    // TODO: Should probably warn about dangerous shares
+    let mut shares: HashMap<Name, FsShare> = config_shares
+        .into_iter()
+        .flatten()
+        .map(|s| (s.name.clone(), s.clone()))
+        .collect();
 
-pub fn create_qcow2_overlay(cfg: &CloudHypervisorVmConfig) -> Result<PathBuf, anyhow::Error> {
-    let qcow2_path = state_dir()?
-        .join(cfg.name)
-        .join("backing_file")
-        .with_extension(RootfsType::QCOW2.to_string());
-
-    if qcow2_path.exists() && !cfg.reset_overlay {
-        return Ok(qcow2_path);
+    for cli_share in cli_shares {
+        shares.insert(cli_share.name.clone(), cli_share);
     }
 
-    let rootfs_size = std::fs::metadata(cfg.rootfs)
-        .context("calculating overlay size from rootfs")?
-        .size();
-    let image_file = imago::file::File::create_open(
-        imago::StorageCreateOptions::new()
-            .filename(&qcow2_path)
-            .overwrite(true),
-    )
-    .context("creating qcow2 overlay file")?;
+    let mut shares: Vec<FsShare> = shares.into_values().collect();
+    shares.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Qcow2CreateBuilder::<imago::file::File>::new(image_file)
-        .size(rootfs_size)
-        .backing(
-            cfg.rootfs.display().to_string(),
-            cfg.rootfs_type.to_string(),
-        )
-        .create()
-        .context("formatting qcow2 image")?;
-
-    Ok(qcow2_path)
+    shares
 }
 
-pub fn kill_child_and_socket_with_timeout(child: &mut Child, socket_path: &Path) {
-    unsafe {
-        let _ = libc::kill(child.id() as i32, libc::SIGTERM);
+fn existing_sandbox_names() -> Vec<String> {
+    let mut names: Vec<String> = [Some(runtime_dir()), state_dir().ok()]
+        .into_iter()
+        .flatten()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+
+    names.sort();
+    names.dedup();
+
+    names
+}
+
+fn complete_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
+    let Some(current) = current.to_str() else {
+        return Vec::new();
+    };
+
+    existing_sandbox_names()
+        .into_iter()
+        .filter(|name| name.starts_with(current))
+        .map(CompletionCandidate::new)
+        .collect()
+}
+
+fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), anyhow::Error> {
+    let mut paths = vec![unique_socket_path(name, "passt")];
+    for share in shares {
+        paths.push(unique_socket_path(name, &format!("vfsd-{}", share.name)));
     }
-    match child.wait_timeout(std::time::Duration::from_secs(3)) {
-        Ok(Some(_)) => {}
-        _ => {
-            let _ = child.kill();
-            let _ = child.wait();
+
+    for path in paths {
+        let length = path.as_os_str().len();
+        if length > MAX_SOCKET_PATH_LENGTH {
+            return Err(anyhow::anyhow!(
+                "socket path `{}` is {length} bytes, which is over the {MAX_SOCKET_PATH_LENGTH} \
+                 byte limit for unix sockets, use a shorter sandbox or share name",
+                path.display()
+            ));
         }
     }
-    // This makes sure that the socket file is properly removed (happens when child did not
-    // gracefully shutdown)
-    let _ = std::fs::remove_file(socket_path);
-    let _ = std::fs::remove_file(socket_path.with_added_extension("pid"));
-}
 
-pub fn setup_dirs_for_sandbox(name: &str) -> Result<(), anyhow::Error> {
-    let runtime = runtime_dir().join(name);
-    std::fs::create_dir_all(&runtime).context("creating runtime directory for sandbox")?;
-    std::fs::set_permissions(runtime, std::fs::Permissions::from_mode(0o700))?;
+    Ok(())
 }
 
 // Must be unique because sock files won't get cleanup if the process exits unexpectedly
 pub fn unique_socket_path(sandbox_name: &Name, prefix: &str) -> PathBuf {
-    runtime_dir().join(sandbox_name).join(format!("{prefix}-{}.sock", std::process::id()))
+    runtime_dir()
+        .join(sandbox_name)
+        .join(format!("{prefix}-{}.sock", std::process::id()))
 }
 
-    let state = state_dir()?.join(name);
-    std::fs::create_dir_all(&state).context("creating state directory for sandbox")?;
-    std::fs::set_permissions(state, std::fs::Permissions::from_mode(0o700))?;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    Ok(())
+    fn share(name: &str, dir: &str, read_only: bool) -> FsShare {
+        FsShare {
+            host_dir: PathBuf::from(dir),
+            name: Name::new(name).unwrap(),
+            read_only,
+        }
+    }
+
+    #[test]
+    fn cli_shares_override_config_shares_by_name() {
+        let config_shares = vec![share("data", "/from/config", true)];
+        let merged = merge_shares(
+            Some(&config_shares),
+            vec![share("data", "/from/cli", false)],
+        );
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].host_dir, PathBuf::from("/from/cli"));
+        assert!(!merged[0].read_only);
+    }
+
+    #[test]
+    fn merged_shares_are_ordered_deterministically() {
+        let config_shares = vec![
+            share("zulu", "/z", false),
+            share("alpha", "/a", false),
+            share("mike", "/m", false),
+        ];
+        let merged = merge_shares(Some(&config_shares), vec![share("bravo", "/b", false)]);
+        let names: Vec<&str> = merged.iter().map(|s| s.name.as_str()).collect();
+
+        assert_eq!(names, ["alpha", "bravo", "mike", "zulu"]);
+    }
 }

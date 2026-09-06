@@ -49,9 +49,15 @@ impl FsMount {
             .arg("--translate-gid")
             .arg(format!("squash-guest:0:{host_gid}:{ALL_POSSIBLE_UIDS}"))
             .arg("--translate-uid")
-            .arg(format!("squash-host:0:{}:{ALL_POSSIBLE_UIDS}", config.sandbox_user_uid))
+            .arg(format!(
+                "squash-host:0:{}:{ALL_POSSIBLE_UIDS}",
+                config.sandbox_user_uid
+            ))
             .arg("--translate-gid")
-            .arg(format!("squash-host:0:{}:{ALL_POSSIBLE_UIDS}", config.sandbox_user_gid));
+            .arg(format!(
+                "squash-host:0:{}:{ALL_POSSIBLE_UIDS}",
+                config.sandbox_user_gid
+            ));
         if share.read_only {
             cmd.arg("--readonly");
         }

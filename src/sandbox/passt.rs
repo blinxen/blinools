@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::Context;
 
-use crate::sandbox::netns::NetworkNamespace;
 use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, wait_for_socket};
 use crate::sandbox::{config::Config, unique_socket_path};
 
@@ -18,9 +17,7 @@ pub struct PasstNetwork {
 }
 
 impl PasstNetwork {
-    pub fn new(
-        config: &Config,
-    ) -> Result<PasstNetwork, anyhow::Error> {
+    pub fn new(config: &Config) -> Result<PasstNetwork, anyhow::Error> {
         let socket_path = unique_socket_path(&config.name, "passt");
         let mut binary_path = PathBuf::from("passt");
         if let Some(cfg) = &config.passt

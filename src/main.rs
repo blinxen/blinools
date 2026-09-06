@@ -1,5 +1,4 @@
 mod config;
-mod console;
 mod sandbox;
 mod wip_pr;
 
