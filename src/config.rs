@@ -1,5 +1,5 @@
 use std::{
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
 };
 
@@ -41,6 +41,13 @@ pub fn setup_dirs() -> Result<(), anyhow::Error> {
     create_dir(&state_dir()?).context("creating state directory")?;
 
     Ok(())
+}
+
+pub fn create_dir(path: &Path) -> Result<(), std::io::Error> {
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
 }
 
 pub fn parse_config(config_file: &str) -> Result<Config, anyhow::Error> {
