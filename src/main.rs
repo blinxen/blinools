@@ -2,6 +2,8 @@ mod config;
 mod sandbox;
 mod wip_pr;
 
+use std::io::IsTerminal;
+
 use anyhow::Context;
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{CompleteEnv, Shell, env::Shells};
@@ -62,6 +64,10 @@ fn main() -> Result<(), anyhow::Error> {
             task_number,
         } => wip_pr::create(&branch_name, branch_type.as_deref(), task_number.as_deref())?,
         Commands::Sandbox { command } => {
+            if !std::io::stdin().is_terminal() {
+                eprintln!("This command requires a interactive terminal session");
+                std::process::exit(1);
+            }
             let config = config::parse_config(&cli.config_file)?;
             config::setup_dirs()?;
 
