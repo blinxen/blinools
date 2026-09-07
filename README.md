@@ -39,13 +39,13 @@ This installs the `blinools` binary to `~/.cargo/bin`.
 
 ```bash
 # Bash
-blinools completions bash > ~/.local/share/bash-completion/completions/blinools
+echo 'source <(blinools completions bash)' >> ~/.bashrc
 
 # Zsh
-blinools completions zsh > "${fpath[1]}/_blinools"
+echo 'source <(blinools completions zsh)' >> ~/.zshrc
 
 # Fish
-blinools completions fish > ~/.config/fish/completions/blinools.fish
+echo 'blinools completions fish | source' >> ~/.config/fish/config.fish
 ```
 
 ## Configuration reference
@@ -59,14 +59,16 @@ The configuration file uses the TOML format and can be configured using:
 blinools --config ./my-sandbox.toml sandbox create
 ```
 
-The order in which they are loaded is global → `--config` flag. The flag file
-overrides whatever was defined in the global configuration file.
+The order in which they are loaded is global -> `--config` flag. The two are merged **per key**,
+so the flag file only overrides the keys it actually sets and inherits everything else from the
+global file. That includes `shares`: a project configuration that does not mention `shares` still
+gets the global ones. Write `shares = []` to say "no shares at all".
 
 Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blinools-sandbox) command:
 
 | Key | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `name` | string | No | Sandbox name to use, if not defined then the current directory name is used. If that somehow also does not work a random 16 character name is generated. | Overridden by the `[NAME]` argument to `sandbox create` |
+| `name` | string | No | The current directory's name, or a random 16 character name if that does not work | Overridden by the `[NAME]` argument to `sandbox create`. |
 | `kernel` | path | **Yes** | - | - |
 | `kernel_cmdline` | string | No | `""` | Must not contain `console=` or `root=` (already set for you, see [How it works](#how-it-works)) |
 | `rootfs` | path | **Yes** | - | Treated as a read-only base image |
@@ -75,9 +77,11 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `cpus` | integer | **Yes** | - | Accepted range is 1 – 255 |
 | `dns` | array of strings | No | - | DNS server IPs to use inside the guest |
 | `shares` | array of tables | No | - | Can also be set / overridden per-run with `--share`, see [`sandbox create`](#sandbox-create) |
-| `shares[].name` | string | **Yes** | - | ASCII only. Used as the guest mount point `/mnt/<name>` |
+| `shares[].name` | string | **Yes** | - | Used as the guest mount point `/mnt/<name>`. |
 | `shares[].host_dir` | path | **Yes** | - | - |
 | `shares[].read_only` | bool | No | `false` | |
+| `guest_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [shares](#shares-and-file-ownership) |
+| `guest_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [ shares](#shares-and-file-ownership) |
 | `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | |
 | `passt.binary` | path | No | Resolved from `$PATH` as `passt` | |
 | `virtiofsd.binary` | path | No | Resolved from `$PATH` as `virtiofsd` | |
@@ -85,7 +89,7 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 ```toml
 [sandbox]
 # Optional custom paths to the binary files
-cloud_hypervisor.cloud_hypervisor_binary = "/path/to/cloud-hypervisor"
+cloud_hypervisor.binary = "/path/to/cloud-hypervisor"
 passt.binary = "/path/to/passt"
 virtiofsd.binary = "/path/to/virtiofsd"
 # Path to the kernel
@@ -242,7 +246,7 @@ Inside the guest, a share appears at `/mnt/<name>` if you are using `systemd` as
 ```bash
 # Start (or resume) a sandbox named "scratch", sharing the current
 # directory read-write and ~/notes read-only
-blinools sandbox create scratch -s "$(pwd)" -s notes:~/notes:ro
+blinools sandbox create scratch -s "$(pwd)" -s "notes:$HOME/notes:ro"
 ```
 
 If you are not using `systemd` then you can manually mount the shares with `mount -t virtiofs <name> mount_dir/`.
@@ -288,6 +292,9 @@ flowchart LR
     VFSD <-->|virtio-fs socket| CH
     CH -->|KVM| VM["microVM: kernel + rootfs"]
 
+    CH <-->|pty| FILTER["escape sequence filter"]
+    FILTER <--> TERM(("your terminal"))
+
     PASST -->|NAT via 10.200.0.2/24| NET(("host network"))
     VFSD -.->|mounted at /mnt/name| VM
 ```
@@ -308,15 +315,34 @@ flowchart LR
   the sandbox's [state directory](#on-disk-layout). All writes made inside
   the guest land in that overlay and persist across restarts.
   `--recreate` discards this overlay and starts clean.
+- **Console filter**: the guest console is not attached to your terminal directly. blinools puts a
+  pty in between and filters what the guest writes, see
+  [Console and your terminal](#console-and-your-terminal).
 - The kernel command line is always prefixed with
   `console=hvc0 root=/dev/vda rw systemd.hostname=<name>`.
   `console` and `root` can't be overridden via `kernel_cmdline`.
+
+#### Console and your terminal
+
+The guest gets a real terminal, and you get a normal shell, but the two are not wired straight
+together. blinools allocates a pty, gives the hypervisor the slave side and keeps the master, then
+filters problematic escape sequences on their way to your terminal emulator.
+
+#### Shares and file ownership
+
+Shares are read-write unless you ask for `ro`, which means the guest can rewrite anything it can see.
+
+virtiofsd is told to squash every guest UID and GID onto the user that started the sandbox, so the
+guest cannot express any ownership on the host beyond what that user already has. In the other
+direction every host UID and GID shows up in the guest as `guest_uid` / `guest_gid` (`1000` by
+default), so shared files stay writable for the guest's normal user.
 
 #### On-disk layout
 
 | Path | Contents | Lifetime |
 | --- | --- | --- |
-| `/run/user/<uid>/blinools/<name>/` | Cloud Hypervisor API socket, passt socket, virtiofsd sockets | While the sandbox is running, cleaned up on shutdown / delete |
+| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Cloud Hypervisor API socket, passt socket, virtiofsd sockets | While the sandbox is running, cleaned up on shutdown / delete |
+| `$XDG_RUNTIME_DIR/blinools/<name>.lock` | Empty file, locked while blinools works on that sandbox | Until the sandbox is shutdown |
 | `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | The qcow2 disk overlay holding everything written inside the guest | Persists across restarts, until `sandbox delete` or `--recreate` |
 
 ## License
