@@ -14,8 +14,8 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(short = 'c', long = "config", default_value = "./blinools.toml")]
-    config_file: String,
+    #[arg(short = 'c', long = "config")]
+    config_file: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -68,7 +68,7 @@ fn main() -> Result<(), anyhow::Error> {
                 eprintln!("This command requires a interactive terminal session");
                 std::process::exit(1);
             }
-            let config = config::parse_config(&cli.config_file)?;
+            let config = config::parse_config(cli.config_file.as_ref())?;
             config::setup_dirs()?;
 
             let sandbox_config = config
