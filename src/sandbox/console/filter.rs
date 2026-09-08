@@ -90,7 +90,8 @@ impl<'a> FilterPerformer<'a> {
                 if index > 0 {
                     self.output.push(b':');
                 }
-                self.output.extend_from_slice(sub_parameter.to_string().as_bytes());
+                self.output
+                    .extend_from_slice(sub_parameter.to_string().as_bytes());
             }
         }
 
@@ -167,12 +168,9 @@ impl Perform for FilterPerformer<'_> {
                     self.write_csi(params, intermediates, action);
                 }
             }
-            // cursor movement
-            [b' '] => {
-                // Sets cursor style
-                if action == 'q' {
-                    self.write_csi(params, intermediates, action);
-                }
+            // Sets cursor style
+            [b' '] if action == 'q' => {
+                self.write_csi(params, intermediates, action);
             }
             _ => {}
         }
@@ -245,7 +243,7 @@ fn allowed_csi(action: char, params: &Params) -> bool {
             // Here is a list that would add F1 to F12
             // 11 | 12 | 13 | 14 | 15 | 17 | 18 | 19 | 20 | 21 | 23 | 24
             let n: Vec<u16> = params.iter().flatten().copied().collect();
-            matches!(n.first(), Some(1 | 2 | 3 | 4 | 5 | 6 | 7 | 8))
+            matches!(n.first(), Some(1..=8))
         }
 
         // Insert lines

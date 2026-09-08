@@ -53,7 +53,7 @@ echo 'blinools completions fish | source' >> ~/.config/fish/config.fish
 The configuration file uses the TOML format and can be configured using:
 
 - a global configuration file located at `$XDG_CONFIG_HOME/blinools/blinools.toml` or `$HOME/.config/blinools/blinools.toml` if `$XDG_CONFIG_HOME` is not defined
-- the `-c`/`--config` flag, available on every command, which defaults to `./blinools.toml`
+- the `-c`/`--config` flag, available on every command
 
 ```bash
 blinools --config ./my-sandbox.toml sandbox create
@@ -80,6 +80,8 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `shares[].name` | string | **Yes** | - | Used as the guest mount point `/mnt/<name>`. |
 | `shares[].host_dir` | path | **Yes** | - | - |
 | `shares[].read_only` | bool | No | `false` | |
+| `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only |
+| `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty file or directory) |
 | `guest_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [shares](#shares-and-file-ownership) |
 | `guest_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [ shares](#shares-and-file-ownership) |
 | `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | |

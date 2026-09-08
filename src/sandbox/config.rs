@@ -66,18 +66,58 @@ pub struct Config {
     pub virtiofsd: Option<BinaryConfig>,
 }
 
-#[derive(Clone, Debug, Deserialize, Validate)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FsShare {
-    #[garde(custom(path_exists))]
     #[serde(deserialize_with = "deserialize_absolute_path")]
     pub host_dir: PathBuf,
-    #[garde(skip)]
     pub name: Name,
-    #[garde(skip)]
     #[serde(default)]
     // For the whole share
     pub read_only: bool,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_absolute_paths")]
+    // Meant as just subpaths in the share, so only part of the share should be read only
+    pub read_only_paths: Vec<PathBuf>,
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_absolute_paths")]
+    // Same as the read only paths but here we actually make the paths hidden so the sandbox
+    // can't see
+    pub hidden_paths: Vec<PathBuf>,
+}
+
+impl garde::Validate for FsShare {
+    type Context = ();
+
+    fn validate_into(
+        &self,
+        ctx: &Self::Context,
+        parent: &mut dyn FnMut() -> garde::Path,
+        report: &mut garde::Report,
+    ) {
+        if let Err(e) = path_exists(&self.host_dir, ctx) {
+            report.append(parent().join("host_dir"), e);
+            return;
+        }
+
+        for (field, paths) in [
+            ("read_only_paths", &self.read_only_paths),
+            ("hidden_paths", &self.hidden_paths),
+        ] {
+            for (i, path) in paths.iter().enumerate() {
+                if !path.starts_with(&self.host_dir) || path == &self.host_dir {
+                    report.append(
+                        parent().join(field).join(i),
+                        garde::Error::new(format!(
+                            "{} is not inside host_dir {}",
+                            path.display(),
+                            self.host_dir.display(),
+                        )),
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[derive(Deserialize, Validate)]
@@ -195,6 +235,8 @@ pub fn parse_share(s: &str) -> Result<FsShare, String> {
         host_dir,
         name,
         read_only,
+        read_only_paths: Vec::new(),
+        hidden_paths: Vec::new(),
     };
     share.validate().map_err(|e| e.to_string())?;
     Ok(share)
@@ -203,6 +245,8 @@ pub fn parse_share(s: &str) -> Result<FsShare, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use garde::Validate;
+    use std::fs;
     use tempfile::tempdir;
 
     #[test]
@@ -250,5 +294,172 @@ mod tests {
         let share = parse_share(&format!("data:{path}:rw")).unwrap();
         assert_eq!(share.name.as_str(), "data");
         assert!(!share.read_only);
+    }
+
+    fn share(
+        host_dir: PathBuf,
+        read_only_paths: Vec<PathBuf>,
+        hidden_paths: Vec<PathBuf>,
+    ) -> FsShare {
+        FsShare {
+            host_dir,
+            name: Name::new("test-share").expect("valid name"),
+            read_only: false,
+            read_only_paths,
+            hidden_paths,
+        }
+    }
+
+    #[test]
+    fn fs_share_valid_with_no_subpaths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_dir = tmp.path().canonicalize().unwrap();
+
+        let s = share(host_dir, vec![], vec![]);
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn fs_share_valid_with_nested_subpaths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_dir = tmp.path().canonicalize().unwrap();
+        let ro = host_dir.join("configs");
+        let hidden = host_dir.join("secrets");
+        fs::create_dir(&ro).unwrap();
+        fs::create_dir(&hidden).unwrap();
+
+        let s = share(host_dir, vec![ro], vec![hidden]);
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn fs_share_valid_with_deeply_nested_subpath() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_dir = tmp.path().canonicalize().unwrap();
+        let deep = host_dir.join("a").join("b").join("c");
+        fs::create_dir_all(&deep).unwrap();
+
+        let s = share(host_dir, vec![deep], vec![]);
+        assert!(s.validate().is_ok());
+    }
+
+    #[test]
+    fn fs_share_rejects_missing_host_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing = tmp.path().join("does-not-exist");
+
+        let s = share(missing, vec![], vec![]);
+        let report = s.validate().unwrap_err();
+        assert!(garde::select!(report, host_dir).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_rejects_read_only_path_outside_host_dir() {
+        let base = tempfile::tempdir().unwrap();
+        let host_dir = base.path().join("share");
+        let outside = base.path().join("elsewhere");
+        fs::create_dir(&host_dir).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let host_dir = host_dir.canonicalize().unwrap();
+        let outside = outside.canonicalize().unwrap();
+
+        let s = share(host_dir, vec![outside], vec![]);
+        let report = s.validate().unwrap_err();
+        assert!(garde::select!(report, read_only_paths[0]).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_rejects_hidden_path_outside_host_dir() {
+        let base = tempfile::tempdir().unwrap();
+        let host_dir = base.path().join("share");
+        let outside = base.path().join("elsewhere");
+        fs::create_dir(&host_dir).unwrap();
+        fs::create_dir(&outside).unwrap();
+        let host_dir = host_dir.canonicalize().unwrap();
+        let outside = outside.canonicalize().unwrap();
+
+        let s = share(host_dir, vec![], vec![outside]);
+        let report = s.validate().unwrap_err();
+        assert!(garde::select!(report, hidden_paths[0]).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_rejects_sibling_dir_with_shared_prefix() {
+        // Regression test for the "starts_with must be component-wise"
+        // requirement: /base/share2 must NOT pass as inside /base/share.
+        let base = tempfile::tempdir().unwrap();
+        let host_dir = base.path().join("share");
+        let sibling = base.path().join("share2");
+        fs::create_dir(&host_dir).unwrap();
+        fs::create_dir(&sibling).unwrap();
+        let host_dir = host_dir.canonicalize().unwrap();
+        let sibling = sibling.canonicalize().unwrap();
+
+        let s = share(host_dir, vec![sibling], vec![]);
+        let report = s.validate().unwrap_err();
+        assert!(garde::select!(report, read_only_paths[0]).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_rejects_host_dir_itself_as_hidden_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host_dir = tmp.path().canonicalize().unwrap();
+
+        // Listing host_dir itself as a "hidden path" would hide the whole
+        // share via a subpath entry instead of an explicit share-level flag.
+        let s = share(host_dir.clone(), vec![], vec![host_dir]);
+        let report = s.validate().unwrap_err();
+        assert!(garde::select!(report, hidden_paths[0]).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_reports_one_error_per_bad_path() {
+        let base = tempfile::tempdir().unwrap();
+        let host_dir = base.path().join("share");
+        let outside_a = base.path().join("outside-a");
+        let outside_b = base.path().join("outside-b");
+        fs::create_dir(&host_dir).unwrap();
+        fs::create_dir(&outside_a).unwrap();
+        fs::create_dir(&outside_b).unwrap();
+        let host_dir = host_dir.canonicalize().unwrap();
+        let outside_a = outside_a.canonicalize().unwrap();
+        let outside_b = outside_b.canonicalize().unwrap();
+
+        let s = share(host_dir, vec![outside_a], vec![outside_b]);
+        let report = s.validate().unwrap_err();
+
+        assert_eq!(report.iter().count(), 2);
+        assert!(garde::select!(report, read_only_paths[0]).next().is_some());
+        assert!(garde::select!(report, hidden_paths[0]).next().is_some());
+    }
+
+    #[test]
+    fn fs_share_errors_nest_correctly_through_a_vec_of_shares() {
+        let base = tempfile::tempdir().unwrap();
+        let good_host = base.path().join("good");
+        let bad_host = base.path().join("bad");
+        let outside = base.path().join("outside");
+        fs::create_dir(&good_host).unwrap();
+        fs::create_dir(&bad_host).unwrap();
+        fs::create_dir(&outside).unwrap();
+
+        let good = share(good_host.canonicalize().unwrap(), vec![], vec![]);
+        let bad = share(
+            bad_host.canonicalize().unwrap(),
+            vec![outside.canonicalize().unwrap()],
+            vec![],
+        );
+
+        let shares = vec![good, bad];
+        let report = shares.validate().unwrap_err();
+
+        // index 0 (the good share) contributed nothing; index 1's bad
+        // subpath shows up nested under its own index, same shape `dive`
+        // on Config's `shares` field would produce.
+        assert!(
+            garde::select!(report, [1].read_only_paths[0])
+                .next()
+                .is_some()
+        );
     }
 }
