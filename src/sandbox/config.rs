@@ -1,5 +1,5 @@
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::{
     fmt,
     path::{Path, PathBuf},
@@ -30,12 +30,14 @@ pub struct Config {
     #[garde(skip)]
     #[serde(default = "default_sandbox_name")]
     pub name: Name,
+    #[serde(deserialize_with = "deserialize_absolute_path")]
     #[garde(custom(path_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
     #[serde(default)]
     pub kernel_cmdline: String,
     #[garde(custom(path_exists))]
+    #[serde(deserialize_with = "deserialize_absolute_path")]
     pub rootfs: PathBuf,
     #[garde(skip)]
     #[serde(default)]
@@ -68,11 +70,13 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct FsShare {
     #[garde(custom(path_exists))]
+    #[serde(deserialize_with = "deserialize_absolute_path")]
     pub host_dir: PathBuf,
     #[garde(skip)]
     pub name: Name,
     #[garde(skip)]
     #[serde(default)]
+    // For the whole share
     pub read_only: bool,
 }
 
@@ -96,6 +100,24 @@ fn default_sandbox_name() -> Name {
 
 fn default_guest_uid_gid() -> u32 {
     1000
+}
+
+fn deserialize_absolute_path<'de, D>(deserializer: D) -> Result<PathBuf, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = PathBuf::deserialize(deserializer)?;
+    std::fs::canonicalize(&raw).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_absolute_paths<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw = Vec::<PathBuf>::deserialize(deserializer)?;
+    raw.into_iter()
+        .map(|p| std::fs::canonicalize(&p).map_err(serde::de::Error::custom))
+        .collect()
 }
 
 fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {

@@ -60,21 +60,7 @@ pub fn parse_config(config_file: Option<&String>) -> Result<Config, anyhow::Erro
         .context("parsing config file")?;
 
     config.validate().context("validating config file")?;
-    // TODO: I don't like doing this manually
-    if let Some(ref mut sandbox) = config.sandbox {
-        sandbox.kernel = make_path_absolute(&sandbox.kernel)?;
-        sandbox.rootfs = make_path_absolute(&sandbox.rootfs)?;
-        if let Some(ref mut shares) = sandbox.shares {
-            for share in shares.iter_mut() {
-                share.host_dir = make_path_absolute(&share.host_dir)?;
-            }
-        }
-    }
     Ok(config)
-}
-
-fn make_path_absolute(path: &Path) -> Result<PathBuf, anyhow::Error> {
-    std::fs::canonicalize(path).context("trying to transform path to absolute path")
 }
 
 fn config_dir() -> PathBuf {
