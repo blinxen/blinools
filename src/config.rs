@@ -53,7 +53,10 @@ pub fn create_dir(path: &Path) -> Result<(), std::io::Error> {
 pub fn parse_config(config_file: Option<&String>) -> Result<Config, anyhow::Error> {
     let config: Config = config::Config::builder()
         .add_source(config::File::from(config_dir().join("blinools.toml")).required(false))
-        .add_source(config::File::with_name(config_file.unwrap_or(&String::new())).required(config_file.is_some()))
+        .add_source(
+            config::File::with_name(config_file.unwrap_or(&String::new()))
+                .required(config_file.is_some()),
+        )
         .build()
         .context("reading config file")?
         .try_deserialize()

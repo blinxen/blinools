@@ -309,6 +309,8 @@ mod tests {
             host_dir: PathBuf::from(dir),
             name: Name::new(name).unwrap(),
             read_only,
+            read_only_paths: Vec::new(),
+            hidden_paths: Vec::new(),
         }
     }
 
