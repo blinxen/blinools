@@ -32,12 +32,12 @@ pub struct Config {
     #[serde(default = "default_sandbox_name")]
     pub name: Name,
     #[serde(deserialize_with = "deserialize_absolute_path")]
-    #[garde(custom(path_exists))]
+    #[garde(custom(file_exists))]
     pub kernel: PathBuf,
     #[garde(custom(validate_kernel_cmdline))]
     #[serde(default)]
     pub kernel_cmdline: String,
-    #[garde(custom(path_exists))]
+    #[garde(custom(file_exists))]
     #[serde(deserialize_with = "deserialize_absolute_path")]
     pub rootfs: PathBuf,
     #[garde(skip)]
@@ -97,7 +97,7 @@ impl garde::Validate for FsShare {
         parent: &mut dyn FnMut() -> garde::Path,
         report: &mut garde::Report,
     ) {
-        if let Err(e) = path_exists(&self.host_dir, ctx) {
+        if let Err(e) = dir_exists(&self.host_dir, ctx) {
             report.append(parent().join("host_dir"), e);
             return;
         }
@@ -125,7 +125,7 @@ impl garde::Validate for FsShare {
 #[derive(Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct BinaryConfig {
-    #[garde(custom(path_exists_optional))]
+    #[garde(custom(file_exists_optional))]
     pub binary: Option<PathBuf>,
 }
 
@@ -178,28 +178,32 @@ fn validate_kernel_cmdline(value: &str, _ctx: &()) -> garde::Result {
     Ok(())
 }
 
-fn path_exists(value: &Path, _ctx: &()) -> garde::Result {
-    if value.exists() {
+fn file_exists(value: &Path, _ctx: &()) -> garde::Result {
+    if value.is_file() {
         Ok(())
     } else {
         Err(garde::Error::new(format!(
-            "Path `{}` does not exist",
+            "Path `{}` does not exist or is not a file",
             value.display()
         )))
     }
 }
 
-fn path_exists_optional(value: &Option<PathBuf>, _ctx: &()) -> garde::Result {
-    let Some(value) = value else { return Ok(()) };
-
-    if value.exists() {
+fn dir_exists(value: &Path, _ctx: &()) -> garde::Result {
+    if value.is_dir() {
         Ok(())
     } else {
         Err(garde::Error::new(format!(
-            "Path `{}` does not exist",
+            "Path `{}` does not exist or is not a directory",
             value.display()
         )))
     }
+}
+
+fn file_exists_optional(value: &Option<PathBuf>, ctx: &()) -> garde::Result {
+    let Some(value) = value else { return Ok(()) };
+
+    file_exists(value, ctx)
 }
 
 pub fn merge_by_name(base: Option<&Vec<FsShare>>, overrides: Vec<FsShare>) -> Vec<FsShare> {
@@ -269,27 +273,68 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    fn named_share(name: &str, dir: &str, read_only: bool) -> FsShare {
+        FsShare {
+            host_dir: PathBuf::from(dir),
+            name: Name::new(name).unwrap(),
+            read_only,
+            read_only_paths: Vec::new(),
+            hidden_paths: Vec::new(),
+        }
+    }
+
+    fn share(
+        host_dir: PathBuf,
+        read_only_paths: Vec<PathBuf>,
+        hidden_paths: Vec<PathBuf>,
+    ) -> FsShare {
+        FsShare {
+            host_dir,
+            name: Name::new("test-share").expect("valid name"),
+            read_only: false,
+            read_only_paths,
+            hidden_paths,
+        }
+    }
+
     #[test]
-    fn path_exists_accepts_real_dir() {
+    fn dir_exists_only_accepts_existing_dirs() {
         let dir = tempdir().unwrap();
-        assert!(path_exists(dir.path(), &()).is_ok());
-        assert!(path_exists_optional(&Some(dir.path().to_path_buf()), &()).is_ok());
+        let file = dir.path().join("file");
+        std::fs::File::create(&file).unwrap();
+        assert!(dir_exists(dir.path(), &()).is_ok());
+        assert!(dir_exists(&Path::new("i-dont-exist"), &()).is_err());
+        assert!(dir_exists(&file, &()).is_err());
     }
 
     #[test]
-    fn path_exists_rejects_missing_dir() {
-        let missing = PathBuf::from("/definitely/not/a/real/path/xyz");
-        let result = path_exists(&missing, &());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not exist"));
-        let result2 = path_exists_optional(&Some(missing), &());
-        assert!(result2.is_err());
-        assert!(result2.unwrap_err().to_string().contains("does not exist"));
+    fn file_exists_only_accepts_existing_files() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("file");
+        std::fs::File::create(&file).unwrap();
+        assert!(file_exists(dir.path(), &()).is_err());
+        assert!(file_exists(&Path::new("i-dont-exist"), &()).is_err());
+        assert!(file_exists(&file, &()).is_ok());
     }
 
     #[test]
-    fn path_exists_optional_accepts_none() {
-        assert!(path_exists_optional(&None, &()).is_ok());
+    fn file_exists_optional_accepts_none() {
+        assert!(file_exists_optional(&None, &()).is_ok());
+    }
+
+    #[test]
+    fn blacklisted_kernel_parameters_are_rejected() {
+        assert!(validate_kernel_cmdline("foo console= bar", &()).is_err());
+        assert!(validate_kernel_cmdline("console= bar", &()).is_err());
+        assert!(validate_kernel_cmdline("console=bar", &()).is_err());
+        assert!(validate_kernel_cmdline("foo console=", &()).is_err());
+        assert!(validate_kernel_cmdline("console", &()).is_ok());
+
+        assert!(validate_kernel_cmdline("foo root= bar", &()).is_err());
+        assert!(validate_kernel_cmdline("root= bar", &()).is_err());
+        assert!(validate_kernel_cmdline("root=bar", &()).is_err());
+        assert!(validate_kernel_cmdline("foo root=", &()).is_err());
+        assert!(validate_kernel_cmdline("root", &()).is_ok());
     }
 
     #[test]
@@ -298,6 +343,21 @@ mod tests {
         let path = dir.path().display();
         assert!(parse_share(&format!("../../etc:{path}:rw")).is_err());
         assert!(parse_share(&format!("a init=-bin-sh:{path}:rw")).is_err());
+    }
+
+    #[test]
+    fn parse_share_rejects_invalid_shares() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().display();
+        assert!(parse_share(&format!("{path}:")).is_err());
+        assert!(parse_share(&format!("{path}:r")).is_err());
+        assert!(parse_share(&format!("{path}:o")).is_err());
+        assert!(parse_share(&format!("{path}:ro:")).is_err());
+        assert!(parse_share(&format!("{path}:rw:")).is_err());
+        assert!(parse_share(&format!("{path}:rw:data")).is_err());
+        assert!(parse_share(&format!("data:{path}:rw:data")).is_err());
+        assert!(parse_share(&format!("data:{path}rw")).is_err());
+        assert!(parse_share(&format!("data{path}rw")).is_err());
     }
 
     #[test]
@@ -345,30 +405,6 @@ mod tests {
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].name.as_str(), "data");
-    }
-
-    fn named_share(name: &str, dir: &str, read_only: bool) -> FsShare {
-        FsShare {
-            host_dir: PathBuf::from(dir),
-            name: Name::new(name).unwrap(),
-            read_only,
-            read_only_paths: Vec::new(),
-            hidden_paths: Vec::new(),
-        }
-    }
-
-    fn share(
-        host_dir: PathBuf,
-        read_only_paths: Vec<PathBuf>,
-        hidden_paths: Vec<PathBuf>,
-    ) -> FsShare {
-        FsShare {
-            host_dir,
-            name: Name::new("test-share").expect("valid name"),
-            read_only: false,
-            read_only_paths,
-            hidden_paths,
-        }
     }
 
     #[test]

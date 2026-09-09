@@ -288,3 +288,249 @@ pub fn socket_path(sandbox_name: &Name, socket: &str) -> PathBuf {
 pub fn socket_path_in(sandbox_runtime_dir: &Path, socket: &str) -> PathBuf {
     sandbox_runtime_dir.join(format!("{socket}.sock"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::ffi::{OsStr, OsString};
+    use std::os::unix::ffi::OsStrExt;
+
+    fn with_env<F: FnOnce()>(vars: &[(&str, Option<&str>)], f: F) {
+        let saved: Vec<(&str, Option<OsString>)> = vars
+            .iter()
+            .map(|(k, _)| (*k, std::env::var_os(k)))
+            .collect();
+
+        for (k, v) in vars {
+            match v {
+                Some(val) => unsafe { std::env::set_var(k, val) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+
+        f();
+
+        for (k, v) in saved {
+            match v {
+                Some(val) => unsafe { std::env::set_var(k, val) },
+                None => unsafe { std::env::remove_var(k) },
+            }
+        }
+    }
+
+    fn name(s: &str) -> Name {
+        Name::new(s).expect("valid sandbox name")
+    }
+
+    fn share(name: &str) -> FsShare {
+        FsShare {
+            host_dir: PathBuf::new(),
+            name: Name::new(name).unwrap(),
+            read_only: false,
+            read_only_paths: Vec::new(),
+            hidden_paths: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn socket_path_in_joins_socket_name_with_sock_suffix() {
+        let dir = Path::new("/run/user/1000/blinools/mybox");
+        assert_eq!(
+            socket_path_in(dir, "passt"),
+            PathBuf::from("/run/user/1000/blinools/mybox/passt.sock")
+        );
+        assert_eq!(
+            socket_path_in(dir, "vfsd-myshare"),
+            PathBuf::from("/run/user/1000/blinools/mybox/vfsd-myshare.sock")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn existing_sandbox_names_sorts_and_dedupes_across_runtime_and_state() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg_runtime = tmp.path().join("runtime");
+        let xdg_state = tmp.path().join("state");
+
+        with_env(
+            &[
+                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
+                ("XDG_STATE_HOME", Some(xdg_state.to_str().unwrap())),
+            ],
+            || {
+                let runtime_base = runtime_dir();
+                let state_base = state_dir().unwrap();
+
+                std::fs::create_dir_all(runtime_base.join("zeta")).unwrap();
+                std::fs::create_dir_all(runtime_base.join("alpha")).unwrap();
+                std::fs::create_dir_all(state_base.join("alpha")).unwrap();
+                std::fs::create_dir_all(state_base.join("beta")).unwrap();
+
+                assert_eq!(
+                    existing_sandbox_names(),
+                    vec!["alpha".to_string(), "beta".to_string(), "zeta".to_string()]
+                );
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn existing_sandbox_names_ignores_non_directory_entries() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg_runtime = tmp.path().join("runtime");
+
+        with_env(
+            &[
+                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
+                (
+                    "XDG_STATE_HOME",
+                    Some(tmp.path().join("no-such-state").to_str().unwrap()),
+                ),
+            ],
+            || {
+                let runtime_base = runtime_dir();
+                std::fs::create_dir_all(runtime_base.join("real-sandbox")).unwrap();
+                std::fs::write(runtime_base.join("stray-file"), b"not a sandbox").unwrap();
+
+                assert_eq!(existing_sandbox_names(), vec!["real-sandbox".to_string()]);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn existing_sandbox_names_empty_when_neither_dir_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        with_env(
+            &[
+                (
+                    "XDG_RUNTIME_DIR",
+                    Some(tmp.path().join("no-runtime").to_str().unwrap()),
+                ),
+                (
+                    "XDG_STATE_HOME",
+                    Some(tmp.path().join("no-state").to_str().unwrap()),
+                ),
+            ],
+            || {
+                assert!(existing_sandbox_names().is_empty());
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn existing_sandbox_names_still_lists_runtime_when_state_dir_unresolvable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg_runtime = tmp.path().join("runtime");
+
+        with_env(
+            &[
+                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
+                ("XDG_STATE_HOME", None),
+                ("HOME", None),
+            ],
+            || {
+                std::fs::create_dir_all(runtime_dir().join("only-runtime")).unwrap();
+                assert_eq!(existing_sandbox_names(), vec!["only-runtime".to_string()]);
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn complete_sandbox_name_filters_by_prefix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg_runtime = tmp.path().join("runtime");
+
+        with_env(
+            &[
+                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
+                (
+                    "XDG_STATE_HOME",
+                    Some(tmp.path().join("no-such-state").to_str().unwrap()),
+                ),
+            ],
+            || {
+                let base = runtime_dir();
+                std::fs::create_dir_all(base.join("web-1")).unwrap();
+                std::fs::create_dir_all(base.join("web-2")).unwrap();
+                std::fs::create_dir_all(base.join("db")).unwrap();
+
+                let candidates = complete_sandbox_name(OsStr::new("web"));
+                let mut values: Vec<String> = candidates
+                    .iter()
+                    .map(|c| c.get_value().to_string_lossy().into_owned())
+                    .collect();
+                values.sort();
+
+                assert_eq!(values, vec!["web-1".to_string(), "web-2".to_string()]);
+            },
+        );
+    }
+
+    #[test]
+    fn complete_sandbox_name_empty_for_non_utf8_input() {
+        // Not valid UTF-8: "fo\xFFo"
+        let invalid = OsStr::from_bytes(&[0x66, 0x6f, 0xff, 0x6f]);
+        assert!(complete_sandbox_name(invalid).is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn complete_sandbox_name_empty_when_no_names_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let xdg_runtime = tmp.path().join("runtime");
+
+        with_env(
+            &[
+                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
+                (
+                    "XDG_STATE_HOME",
+                    Some(tmp.path().join("no-such-state").to_str().unwrap()),
+                ),
+            ],
+            || {
+                std::fs::create_dir_all(runtime_dir().join("db")).unwrap();
+                assert!(complete_sandbox_name(OsStr::new("web")).is_empty());
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn validate_socket_path_lengths_ok_for_short_names() {
+        with_env(&[("XDG_RUNTIME_DIR", Some("/tmp/xrd"))], || {
+            let n = name("sb");
+            assert!(validate_socket_path_lengths(&n, &[]).is_ok());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn validate_socket_path_lengths_errors_when_sandbox_name_too_long() {
+        with_env(
+            &[("XDG_RUNTIME_DIR", Some(&"x".repeat(MAX_SOCKET_PATH_LENGTH)))],
+            || {
+                let n = name("x");
+                assert!(validate_socket_path_lengths(&n, &[]).is_err());
+            },
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn validate_socket_path_lengths_checks_per_share_socket_names() {
+        with_env(
+            &[("XDG_RUNTIME_DIR", Some(&"x".repeat(MAX_SOCKET_PATH_LENGTH)))],
+            || {
+                let n = name("b");
+                let long_share = share("x");
+                assert!(validate_socket_path_lengths(&n, &[long_share]).is_err());
+            },
+        );
+    }
+}
