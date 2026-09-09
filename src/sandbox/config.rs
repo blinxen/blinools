@@ -1,6 +1,7 @@
 use garde::Validate;
 use serde::{Deserialize, Deserializer};
 use std::{
+    collections::HashMap,
     fmt,
     path::{Path, PathBuf},
 };
@@ -51,6 +52,9 @@ pub struct Config {
     #[garde(skip)]
     #[serde(default = "default_guest_uid_gid")]
     pub sandbox_user_uid: u32,
+    #[garde(skip)]
+    #[serde(default)]
+    pub inherit_shares: bool,
     #[garde(skip)]
     #[serde(default = "default_guest_uid_gid")]
     pub sandbox_user_gid: u32,
@@ -200,6 +204,24 @@ fn path_exists_optional(value: &Option<PathBuf>, _ctx: &()) -> garde::Result {
     }
 }
 
+pub fn merge_by_name(base: Option<&Vec<FsShare>>, overrides: Vec<FsShare>) -> Vec<FsShare> {
+    // TODO: Should probably warn about dangerous shares
+    let mut shares: HashMap<Name, FsShare> = base
+        .into_iter()
+        .flatten()
+        .map(|s| (s.name.clone(), s.clone()))
+        .collect();
+
+    for override_share in overrides {
+        shares.insert(override_share.name.clone(), override_share);
+    }
+
+    let mut shares: Vec<FsShare> = shares.into_values().collect();
+    shares.sort_by(|a, b| a.name.cmp(&b.name));
+
+    shares
+}
+
 // Used only by clap parser
 pub fn parse_share(s: &str) -> Result<FsShare, String> {
     let usage =
@@ -294,6 +316,47 @@ mod tests {
         let share = parse_share(&format!("data:{path}:rw")).unwrap();
         assert_eq!(share.name.as_str(), "data");
         assert!(!share.read_only);
+    }
+
+    #[test]
+    fn overriding_shares_win_by_name() {
+        let base = vec![named_share("data", "/from/config", true)];
+        let merged = merge_by_name(Some(&base), vec![named_share("data", "/from/cli", false)]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].host_dir, PathBuf::from("/from/cli"));
+        assert!(!merged[0].read_only);
+    }
+
+    #[test]
+    fn merged_shares_are_ordered_deterministically() {
+        let base = vec![
+            named_share("zulu", "/z", false),
+            named_share("alpha", "/a", false),
+            named_share("mike", "/m", false),
+        ];
+        let merged = merge_by_name(Some(&base), vec![named_share("bravo", "/b", false)]);
+        let names: Vec<&str> = merged.iter().map(|s| s.name.as_str()).collect();
+
+        assert_eq!(names, ["alpha", "bravo", "mike", "zulu"]);
+    }
+
+    #[test]
+    fn merging_without_a_base_keeps_the_overrides() {
+        let merged = merge_by_name(None, vec![named_share("data", "/from/cli", false)]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].name.as_str(), "data");
+    }
+
+    fn named_share(name: &str, dir: &str, read_only: bool) -> FsShare {
+        FsShare {
+            host_dir: PathBuf::from(dir),
+            name: Name::new(name).unwrap(),
+            read_only,
+            read_only_paths: Vec::new(),
+            hidden_paths: Vec::new(),
+        }
     }
 
     fn share(

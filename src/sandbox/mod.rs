@@ -8,7 +8,10 @@ pub mod config;
 pub mod hypervisor;
 pub mod name;
 
-use std::{collections::HashMap, ffi::OsStr, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context;
 use clap::Subcommand;
@@ -126,7 +129,7 @@ fn create_sandbox(
         .context("creating runtime directory for sandbox")?;
     create_dir(&state_dir()?.join(&config.name)).context("creating state directory for sandbox")?;
 
-    let shares = merge_shares(config.shares.as_ref(), shares);
+    let shares = config::merge_by_name(config.shares.as_ref(), shares);
     validate_socket_path_lengths(&config.name, &shares)?;
 
     {
@@ -224,24 +227,6 @@ fn ensure_unique_name(hypervisor: &dyn Hypervisor, name: &Name) -> Result<(), an
         ));
     }
     Ok(())
-}
-
-fn merge_shares(config_shares: Option<&Vec<FsShare>>, cli_shares: Vec<FsShare>) -> Vec<FsShare> {
-    // TODO: Should probably warn about dangerous shares
-    let mut shares: HashMap<Name, FsShare> = config_shares
-        .into_iter()
-        .flatten()
-        .map(|s| (s.name.clone(), s.clone()))
-        .collect();
-
-    for cli_share in cli_shares {
-        shares.insert(cli_share.name.clone(), cli_share);
-    }
-
-    let mut shares: Vec<FsShare> = shares.into_values().collect();
-    shares.sort_by(|a, b| a.name.cmp(&b.name));
-
-    shares
 }
 
 fn existing_sandbox_names() -> Vec<String> {
