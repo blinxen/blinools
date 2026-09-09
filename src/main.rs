@@ -14,7 +14,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(short = 'c', long = "config")]
+    #[arg(short = 'c', long = "config", global = true)]
     config_file: Option<String>,
 }
 
