@@ -53,16 +53,29 @@ echo 'blinools completions fish | source' >> ~/.config/fish/config.fish
 The configuration file uses the TOML format and can be configured using:
 
 - a global configuration file located at `$XDG_CONFIG_HOME/blinools/blinools.toml` or `$HOME/.config/blinools/blinools.toml` if `$XDG_CONFIG_HOME` is not defined
-- the `-c`/`--config` flag, available on every command
+- a `blinools.toml` in the current working directory if it exists
+- the `-c` / `--config` flag, available on every command, which is read instead of the `blinools.toml` in the current working directory
 
 ```bash
 blinools --config ./my-sandbox.toml sandbox create
 ```
 
-The order in which they are loaded is global -> `--config` flag. The two are merged **per key**,
-so the flag file only overrides the keys it actually sets and inherits everything else from the
-global file. That includes `shares`: a project configuration that does not mention `shares` still
-gets the global ones. Write `shares = []` to say "no shares at all".
+The order in which they are loaded is global -> project, where the project configuration is the
+file passed with `-c` / `--config` or, when the flag is not passed, the `blinools.toml` in the
+current working directory.
+The two are merged **per key**, so the project file only overrides the
+keys it actually sets and inherits everything else from the global file.
+
+`shares` is the exception, because arrays are replaced instead of merged: the project file's
+`shares` are the whole list and the global ones are dropped, so a project file that does not
+mention `shares` gets none at all. Set `inherit_shares = true` to get the global shares as well,
+layered underneath the project file's ones. A share that both files define under the same name is
+taken from the project file as a whole. `inherit_shares` is itself a normal key, so the global file can
+set it and the project file can override it. Without a project configuration there is nothing to
+inherit from and the global `shares` always apply, whatever `inherit_shares` says.
+
+Shares therefore layer up as global -> project configuration -> `--share`, each layer replacing a
+share of the same name entirely.
 
 Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blinools-sandbox) command:
 
@@ -82,6 +95,7 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `shares[].read_only` | bool | No | `false` | |
 | `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only |
 | `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty file or directory) |
+| `inherit_shares` | bool | No | `false` | Only relevant when there is a project configuration: when `true` the global `shares` are merged underneath the ones of the project file |
 | `guest_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [shares](#shares-and-file-ownership) |
 | `guest_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [ shares](#shares-and-file-ownership) |
 | `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | |
@@ -113,6 +127,9 @@ dns = ["192.168.1.1"]
 shares = [
     { name = "share-name", host_dir = "/path/to/a/directory", read_only = false },
 ]
+# Whether the shares of the global config file should be kept when this file is used as the
+# project configuration
+inherit_shares = false
 ```
 
 ## `blinools wip-pr`
