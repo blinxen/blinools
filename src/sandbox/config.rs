@@ -65,8 +65,6 @@ pub struct Config {
     #[garde(dive)]
     pub passt: Option<BinaryConfig>,
     #[garde(dive)]
-    pub pasta: Option<BinaryConfig>,
-    #[garde(dive)]
     pub virtiofsd: Option<BinaryConfig>,
 }
 
