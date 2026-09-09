@@ -9,8 +9,10 @@ use anyhow::Context;
 
 use crate::sandbox::config::{Config, FsShare};
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, wait_for_socket};
-use crate::sandbox::unique_socket_path;
+use crate::sandbox::process::{
+    die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket,
+};
+use crate::sandbox::socket_path;
 
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
 
@@ -24,7 +26,8 @@ pub struct FsMount {
 
 impl FsMount {
     pub fn spawn(config: &Config, share: &FsShare) -> Result<Self, anyhow::Error> {
-        let socket_path = unique_socket_path(&config.name, &format!("vfsd-{}", share.name));
+        let socket_path = socket_path(&config.name, &format!("vfsd-{}", share.name));
+        remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("virtiofsd");
         if let Some(cfg) = &config.virtiofsd
             && let Some(binary) = &cfg.binary

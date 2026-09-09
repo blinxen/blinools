@@ -13,12 +13,12 @@ use serde::Deserialize;
 use crate::config::state_dir;
 use crate::sandbox::config::RootfsType;
 use crate::sandbox::hypervisor::{Hypervisor, State, Vm, VmConfig};
-use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup};
-use crate::sandbox::unique_socket_path;
+use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, remove_stale_socket};
+use crate::sandbox::{socket_path, socket_path_in};
 
 const API_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_API_RESPONSE_LENGTH: usize = 64 * 1024;
-const SOCKET_NAME: &str = "cloud-hypervisor";
+pub const SOCKET_NAME: &str = "cloud-hypervisor";
 
 pub struct CloudHypervisor {
     binary: PathBuf,
@@ -58,11 +58,13 @@ impl Hypervisor for CloudHypervisor {
             }
         }
 
-        let socket_path = unique_socket_path(cfg.name, SOCKET_NAME);
+        let api_socket = socket_path(cfg.name, SOCKET_NAME);
+        remove_stale_socket(&api_socket);
+        remove_stale_socket(&api_socket.with_added_extension("lock"));
         let mut command = Command::new(&self.binary);
         command
             .arg("--api-socket")
-            .arg(&socket_path)
+            .arg(&api_socket)
             .arg("--kernel")
             .arg(cfg.kernel)
             .arg("--landlock")
@@ -97,17 +99,17 @@ impl Hypervisor for CloudHypervisor {
         let handle = command.spawn().context("spawning cloud-hypervisor")?;
 
         Ok(Box::new(CloudHypervisorVm {
-            socket_path,
+            socket_path: api_socket,
             handle,
         }))
     }
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool {
-        can_connect_to_socket(&sandbox_runtime_dir.join(SOCKET_NAME))
+        can_connect_to_socket(&socket_path_in(sandbox_runtime_dir, SOCKET_NAME))
     }
 
     fn shutdown(&self, sandbox_runtime_dir: &Path) -> Result<(), anyhow::Error> {
-        let api_socket_path = sandbox_runtime_dir.join(SOCKET_NAME);
+        let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
         if can_connect_to_socket(&api_socket_path) {
             let response = api(&api_socket_path, "PUT", "vmm.shutdown", None)
                 .context("requesting cloud hypervisor to shut down the sandbox")?;
@@ -123,12 +125,12 @@ impl Hypervisor for CloudHypervisor {
     }
 
     fn state(&self, sandbox_runtime_dir: &Path) -> State {
-        let socket_path = sandbox_runtime_dir.join(SOCKET_NAME);
-        if !can_connect_to_socket(&socket_path) {
+        let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
+        if !can_connect_to_socket(&api_socket_path) {
             return State::Stopped;
         }
 
-        match api(&socket_path, "GET", "vm.info", None) {
+        match api(&api_socket_path, "GET", "vm.info", None) {
             Ok(response) if response.success() => {
                 match serde_json::from_str::<ChInfo>(&response.body) {
                     Ok(info) => State::Running(info.state),
