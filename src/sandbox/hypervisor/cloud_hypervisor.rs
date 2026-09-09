@@ -388,20 +388,60 @@ mod tests {
     use std::os::unix::net::UnixListener;
     use std::time::Instant;
 
+    use crate::sandbox::socket_path_in;
+
     use super::*;
     use tempfile::tempdir;
 
     const VIRTUAL_SIZE: u64 = 5 * 1024 * 1024 * 1024;
     const TEST_TIMEOUT: Duration = Duration::from_millis(200);
 
-    /// A server on `socket_path` that runs `answer` for the first connection it gets.
     fn serve(socket_path: &Path, answer: fn(UnixStream)) {
         let listener = UnixListener::bind(socket_path).unwrap();
         std::thread::spawn(move || {
-            if let Ok((stream, _)) = listener.accept() {
+            while let Ok((stream, _)) = listener.accept() {
                 answer(stream);
             }
         });
+    }
+
+    fn answer_vm_info(mut stream: UnixStream) {
+        let mut request = Vec::new();
+        let mut byte = [0u8; 1];
+        while !request.ends_with(b"\r\n\r\n") {
+            match stream.read(&mut byte) {
+                Ok(0) | Err(_) => return,
+                Ok(_) => request.extend_from_slice(&byte),
+            }
+        }
+
+        let body = r#"{"state":"Running"}"#;
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            )
+            .as_bytes(),
+        );
+    }
+
+    #[test]
+    fn the_state_is_read_from_the_socket_boot_creates() {
+        let dir = tempdir().unwrap();
+        serve(&socket_path_in(dir.path(), SOCKET_NAME), answer_vm_info);
+        let hypervisor = CloudHypervisor::new(PathBuf::from("cloud-hypervisor"));
+
+        assert!(hypervisor.is_running(dir.path()));
+        assert_eq!(hypervisor.state(dir.path()).to_string(), "Running");
+    }
+
+    #[test]
+    fn a_sandbox_without_a_socket_is_stopped() {
+        let dir = tempdir().unwrap();
+        let hypervisor = CloudHypervisor::new(PathBuf::from("cloud-hypervisor"));
+
+        assert!(!hypervisor.is_running(dir.path()));
+        assert!(matches!(hypervisor.state(dir.path()), State::Stopped));
     }
 
     fn create_qcow2(path: &Path, size: u64, backing: Option<(&str, &str)>) {
