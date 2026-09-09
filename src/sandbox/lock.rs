@@ -1,7 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
@@ -9,7 +9,10 @@ use crate::config::runtime_dir;
 use crate::sandbox::name::Name;
 
 // `flock` when its holder dies, so a crashed run cannot leave a name taken forever.
-pub struct SandboxLock(File);
+pub struct SandboxLock {
+    file: File,
+    path: PathBuf,
+}
 
 impl SandboxLock {
     pub fn try_acquire(name: &Name) -> Result<Option<Self>, anyhow::Error> {
@@ -36,15 +39,19 @@ impl SandboxLock {
             return Err(error).with_context(|| format!("locking {}", path.display()));
         }
 
-        Ok(Some(SandboxLock(file)))
+        Ok(Some(SandboxLock {
+            file,
+            path: path.to_owned(),
+        }))
     }
 }
 
 impl Drop for SandboxLock {
     fn drop(&mut self) {
         unsafe {
-            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+            libc::flock(self.file.as_raw_fd(), libc::LOCK_UN);
         }
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
