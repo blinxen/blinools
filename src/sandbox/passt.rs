@@ -6,8 +6,11 @@ use std::{
 
 use anyhow::Context;
 
-use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, wait_for_socket};
-use crate::sandbox::{config::Config, unique_socket_path};
+use crate::sandbox::config::Config;
+use crate::sandbox::{
+    process::{die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket},
+    socket_path,
+};
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -18,7 +21,8 @@ pub struct PasstNetwork {
 
 impl PasstNetwork {
     pub fn new(config: &Config) -> Result<PasstNetwork, anyhow::Error> {
-        let socket_path = unique_socket_path(&config.name, "passt");
+        let socket_path = socket_path(&config.name, "passt");
+        remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("passt");
         if let Some(cfg) = &config.passt
             && let Some(binary) = &cfg.binary

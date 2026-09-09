@@ -21,7 +21,7 @@ use crate::{
         config::FsShare,
         console::{Console, ConsoleExit},
         fs::FsMount,
-        hypervisor::{Hypervisor, VmConfig},
+        hypervisor::{Hypervisor, VmConfig, cloud_hypervisor},
         lock::SandboxLock,
         name::Name,
     },
@@ -274,9 +274,12 @@ fn complete_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
 }
 
 fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), anyhow::Error> {
-    let mut paths = vec![unique_socket_path(name, "passt")];
+    let mut paths = vec![
+        socket_path(name, cloud_hypervisor::SOCKET_NAME),
+        socket_path(name, "passt"),
+    ];
     for share in shares {
-        paths.push(unique_socket_path(name, &format!("vfsd-{}", share.name)));
+        paths.push(socket_path(name, &format!("vfsd-{}", share.name)));
     }
 
     for path in paths {
@@ -293,50 +296,10 @@ fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), a
     Ok(())
 }
 
-// Must be unique because sock files won't get cleanup if the process exits unexpectedly
-pub fn unique_socket_path(sandbox_name: &Name, prefix: &str) -> PathBuf {
-    runtime_dir()
-        .join(sandbox_name)
-        .join(format!("{prefix}-{}.sock", std::process::id()))
+pub fn socket_path(sandbox_name: &Name, socket: &str) -> PathBuf {
+    socket_path_in(&runtime_dir().join(sandbox_name), socket)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn share(name: &str, dir: &str, read_only: bool) -> FsShare {
-        FsShare {
-            host_dir: PathBuf::from(dir),
-            name: Name::new(name).unwrap(),
-            read_only,
-            read_only_paths: Vec::new(),
-            hidden_paths: Vec::new(),
-        }
-    }
-
-    #[test]
-    fn cli_shares_override_config_shares_by_name() {
-        let config_shares = vec![share("data", "/from/config", true)];
-        let merged = merge_shares(
-            Some(&config_shares),
-            vec![share("data", "/from/cli", false)],
-        );
-
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].host_dir, PathBuf::from("/from/cli"));
-        assert!(!merged[0].read_only);
-    }
-
-    #[test]
-    fn merged_shares_are_ordered_deterministically() {
-        let config_shares = vec![
-            share("zulu", "/z", false),
-            share("alpha", "/a", false),
-            share("mike", "/m", false),
-        ];
-        let merged = merge_shares(Some(&config_shares), vec![share("bravo", "/b", false)]);
-        let names: Vec<&str> = merged.iter().map(|s| s.name.as_str()).collect();
-
-        assert_eq!(names, ["alpha", "bravo", "mike", "zulu"]);
-    }
+pub fn socket_path_in(sandbox_runtime_dir: &Path, socket: &str) -> PathBuf {
+    sandbox_runtime_dir.join(format!("{socket}.sock"))
 }

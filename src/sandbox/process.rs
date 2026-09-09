@@ -26,6 +26,10 @@ pub fn die_with_parent(command: &mut Command) {
     }
 }
 
+pub fn remove_stale_socket(socket_path: &Path) {
+    let _ = std::fs::remove_file(socket_path);
+}
+
 pub fn wait_for_socket(
     socket_path: &Path,
     child: &mut Child,
