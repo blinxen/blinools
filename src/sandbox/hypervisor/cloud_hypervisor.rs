@@ -80,11 +80,6 @@ impl Hypervisor for CloudHypervisor {
             .args(mounts)
             .arg("--cmdline")
             .arg(cmdline)
-            .arg("--net")
-            .arg(format!(
-                "vhost_user=true,socket={}",
-                cfg.network_socket.display()
-            ))
             .arg("--cpus")
             .arg(format!("boot={}", cfg.cpus))
             .arg("--memory")
@@ -96,6 +91,13 @@ impl Hypervisor for CloudHypervisor {
             .stdin(cfg.console.stdin)
             .stdout(cfg.console.stdout)
             .stderr(cfg.console.stderr);
+
+        if let Some(network_socket) = cfg.network_socket {
+            command.arg("--net").arg(format!(
+                "vhost_user=true,socket={}",
+                network_socket.display()
+            ));
+        }
 
         if log::log_enabled!(log::Level::Trace) {
             command.arg("-vvv");

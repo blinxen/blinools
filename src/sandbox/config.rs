@@ -16,6 +16,14 @@ pub enum RootfsType {
     QCOW2,
 }
 
+#[derive(PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub enum Network {
+    None,
+    #[default]
+    Lan,
+}
+
 impl fmt::Display for RootfsType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -43,6 +51,9 @@ pub struct Config {
     #[garde(skip)]
     #[serde(default)]
     pub rootfs_type: RootfsType,
+    #[garde(skip)]
+    #[serde(default)]
+    pub network: Network,
     #[garde(range(min = 512, max = 131072))]
     pub memory_mb: u64,
     #[garde(range(min = 1, max = 255))]
