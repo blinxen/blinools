@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString};
+use std::fs::OpenOptions;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -70,7 +71,29 @@ impl FsMount {
         }
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::null());
-        cmd.stderr(Stdio::null());
+
+        let log_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(socket_path.with_extension("log"))
+            .context("create log file for virtiofsd")?;
+        cmd.stderr(Stdio::from(log_file));
+
+        if log::log_enabled!(log::Level::Trace) {
+            cmd.arg("--log-level");
+            cmd.arg("trace");
+        } else if log::log_enabled!(log::Level::Debug) {
+            cmd.arg("--log-level");
+            cmd.arg("debug");
+        } else if log::log_enabled!(log::Level::Info) {
+            cmd.arg("--log-level");
+            cmd.arg("info");
+        } else if log::log_enabled!(log::Level::Warn) {
+            cmd.arg("--log-level");
+            cmd.arg("warn");
+        };
+
         die_with_parent(&mut cmd);
 
         unsafe {

@@ -16,6 +16,9 @@ struct Cli {
 
     #[arg(short = 'c', long = "config", global = true)]
     config_file: Option<String>,
+
+    #[command(flatten)]
+    verbosity: clap_verbosity_flag::Verbosity,
 }
 
 #[derive(Subcommand)]
@@ -55,9 +58,12 @@ enum Commands {
 fn main() -> Result<(), anyhow::Error> {
     CompleteEnv::with_factory(Cli::command).complete();
 
-    let cli = Cli::parse();
+    let args = Cli::parse();
+    env_logger::Builder::new()
+        .filter_level(args.verbosity.into())
+        .init();
 
-    match cli.command {
+    match args.command {
         Commands::WipPr {
             branch_name,
             branch_type,
@@ -68,7 +74,7 @@ fn main() -> Result<(), anyhow::Error> {
                 eprintln!("This command requires a interactive terminal session");
                 std::process::exit(1);
             }
-            let config = config::parse_config(cli.config_file.as_ref())?;
+            let config = config::parse_config(args.config_file.as_ref())?;
             config::setup_dirs()?;
             sandbox::handle(command, config.sandbox)?
         }

@@ -37,37 +37,47 @@ impl PasstNetwork {
             }
         }
 
-        let mut command = Command::new(binary_path);
+        let mut cmd = Command::new(binary_path);
         // TODO: Probably want to enter a network namespace before starting passt
-        command
-            .args([
-                "--vhost-user",
-                "--socket",
-                &socket_path.display().to_string(),
-                "--repair-path",
-                "none",
-                "--foreground",
-                "--no-map-gw",
-                "--map-host-loopback",
-                "none",
-                "--map-guest-addr",
-                "none",
-                "-t",
-                "none",
-                "-u",
-                "none",
-                "--address",
-                "10.200.0.2/24",
-                "--gateway",
-                "10.200.0.1",
-            ])
-            .args(dns_config)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        die_with_parent(&mut command);
+        cmd.args([
+            "--vhost-user",
+            "--socket",
+            &socket_path.display().to_string(),
+            "--log-file",
+            &socket_path.with_extension("log").display().to_string(),
+            "--repair-path",
+            "none",
+            "--foreground",
+            "--no-map-gw",
+            "--map-host-loopback",
+            "none",
+            "--map-guest-addr",
+            "none",
+            "-t",
+            "none",
+            "-u",
+            "none",
+            "--address",
+            "10.200.0.2/24",
+            "--gateway",
+            "10.200.0.1",
+        ])
+        .args(dns_config)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
 
-        let mut handle = command.spawn().context("spawing passt")?;
+        if log::log_enabled!(log::Level::Debug) {
+            cmd.arg("--debug");
+        }
+
+        if log::log_enabled!(log::Level::Trace) {
+            cmd.arg("--trace");
+        }
+
+        die_with_parent(&mut cmd);
+
+        let mut handle = cmd.spawn().context("spawing passt")?;
         if let Err(error) = wait_for_socket(&socket_path, &mut handle, SOCKET_TIMEOUT) {
             kill_child_and_cleanup(&mut handle, &[&socket_path]);
             return Err(error).context("starting the sandbox network");
