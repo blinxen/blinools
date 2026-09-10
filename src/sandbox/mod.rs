@@ -78,8 +78,8 @@ pub enum Command {
     },
 }
 
-pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow::Error> {
-    let hypervisor = hypervisor::new(&config);
+pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), anyhow::Error> {
+    let hypervisor = hypervisor::new(config.as_ref());
 
     match command {
         Command::Ps => {
@@ -92,7 +92,7 @@ pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow
             delete_after_shutdown,
         } => {
             create_sandbox(
-                &mut config,
+                config.context("the configuration has no `sandbox` section")?,
                 hypervisor,
                 shares,
                 name,
@@ -112,7 +112,7 @@ pub fn handle(command: Command, mut config: config::Config) -> Result<(), anyhow
 }
 
 fn create_sandbox(
-    config: &mut config::Config,
+    mut config: config::Config,
     hypervisor: Box<dyn Hypervisor>,
     shares: Vec<FsShare>,
     name: Option<Name>,
@@ -133,10 +133,10 @@ fn create_sandbox(
     validate_socket_path_lengths(&config.name, &shares)?;
 
     {
-        let passt_network = passt::PasstNetwork::new(config)?;
+        let passt_network = passt::PasstNetwork::new(&config)?;
         let mut mounts = Vec::new();
         for share in &shares {
-            mounts.push(FsMount::spawn(config, share)?);
+            mounts.push(FsMount::spawn(&config, share)?);
         }
 
         let mut console = Console::new()?;

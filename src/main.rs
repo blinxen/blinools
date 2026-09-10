@@ -70,11 +70,7 @@ fn main() -> Result<(), anyhow::Error> {
             }
             let config = config::parse_config(cli.config_file.as_ref())?;
             config::setup_dirs()?;
-
-            let sandbox_config = config
-                .sandbox
-                .context("the configuration has no `sandbox` section")?;
-            sandbox::handle(command, sandbox_config)?
+            sandbox::handle(command, config.sandbox)?
         }
         Commands::Completions { shell } => {
             let shell = shell.to_string();

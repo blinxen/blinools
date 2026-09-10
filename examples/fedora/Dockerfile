@@ -1,10 +1,7 @@
-ARG KERNEL_VERSION=7.1.13-200.fc44
-
 FROM fedora:44 AS base
 
 ARG VM_USER=vmuser
 ARG TIMEZONE=Europe/Berlin
-ARG KERNEL_VERSION
 
 # ========================================================================== #
 # Packages                                                                   #
@@ -25,17 +22,22 @@ RUN --mount=type=cache,target=/var/cache/libdnf5,sharing=locked \
         iproute \
         iputils \
         procps-ng \
-        kernel-modules-${KERNEL_VERSION} \
+        kernel-modules \
         ncurses \
         neovim \
         ripgrep \
         fd-find \
-        chrony
+        chrony \
+        cargo \
+        rust \
+        golang
 
 # ========================================================================== #
 # Sytem configuration                                                        #
 # ========================================================================== #
 RUN ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime && \
+    systemd-hwdb update && \
+    ldconfig && \
     systemctl enable \
         systemd-networkd.service \
         systemd-resolved.service \
@@ -46,6 +48,12 @@ RUN ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime && \
         systemd-fsck-root.service \
         auditd.service \
         console-getty.service \
+        systemd-hwdb-update.service \
+        ldconfig.service \
+        systemd-vconsole-setup.service \
+        systemd-homed.service \
+        systemd-homed-activate.service \
+        systemd-userdbd.service \
         getty@tty1.service && \
     systemctl set-default multi-user.target
 
@@ -91,5 +99,4 @@ RUN rm -rf /var/lib/dnf/history* /var/log/dnf* /tmp/* && \
     rm -f /etc/machine-id && touch /etc/machine-id
 
 FROM scratch AS kernel
-ARG KERNEL_VERSION
-COPY --from=base /usr/lib/modules/${KERNEL_VERSION}.x86_64/vmlinuz /kernel
+COPY --from=base /usr/lib/modules/*.x86_64/vmlinuz /kernel
