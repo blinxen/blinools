@@ -16,7 +16,7 @@ pub struct VmConfig<'sandbox> {
     pub rootfs: &'sandbox Path,
     pub rootfs_type: &'sandbox RootfsType,
     pub reset_overlay: bool,
-    pub network_socket: &'sandbox Path,
+    pub network_socket: Option<&'sandbox Path>,
     pub cmdline: &'sandbox str,
     pub memory_mb: u64,
     pub cpus: u8,

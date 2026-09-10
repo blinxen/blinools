@@ -133,7 +133,10 @@ fn create_sandbox(
     validate_socket_path_lengths(&config.name, &shares)?;
 
     {
-        let passt_network = passt::PasstNetwork::new(&config)?;
+        let mut passt_network = None;
+        if config.network == config::Network::Lan {
+            passt_network = Some(passt::PasstNetwork::new(&config)?);
+        }
         let mut mounts = Vec::new();
         for share in &shares {
             mounts.push(FsMount::spawn(&config, share)?);
@@ -146,7 +149,7 @@ fn create_sandbox(
             rootfs: &config.rootfs,
             rootfs_type: &config.rootfs_type,
             reset_overlay: recreate,
-            network_socket: passt_network.socket_path(),
+            network_socket: passt_network.as_ref().map(|p| p.socket_path()),
             cmdline: &config.kernel_cmdline,
             memory_mb: config.memory_mb,
             cpus: config.cpus,

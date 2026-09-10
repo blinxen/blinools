@@ -86,6 +86,7 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `kernel_cmdline` | string | No | `""` | Must not contain `console=` or `root=` (already set for you, see [How it works](#how-it-works)) |
 | `rootfs` | path | **Yes** | - | Treated as a read-only base image |
 | `rootfs_type` | `"Raw"` \| `"QCOW2"` | No | `"Raw"` | Format of the file at `rootfs` |
+| `network` | `"Lan"` \| `"None"` | No | `"Lan"` | Type of network to allow the sandbox to connect to. `Lan` means that sandbox is allowed to connect to the local area network and `None` means to deactivate networking completely (sandbox has no internet connectivity). |
 | `memory_mb` | integer | **Yes** | - | Accepted range is 512 – 131072 (0.5 – 128 GiB) |
 | `cpus` | integer | **Yes** | - | Accepted range is 1 – 255 |
 | `dns` | array of strings | No | - | DNS server IPs to use inside the guest |
