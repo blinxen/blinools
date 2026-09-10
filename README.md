@@ -361,9 +361,9 @@ default), so shared files stay writable for the guest's normal user.
 
 | Path | Contents | Lifetime |
 | --- | --- | --- |
-| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Cloud Hypervisor API socket, passt socket, virtiofsd sockets | While the sandbox is running, cleaned up on shutdown / delete |
+| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Cloud Hypervisor API socket, passt socket, virtiofsd sockets, log files | While the sandbox is running, cleaned up on shutdown / delete |
 | `$XDG_RUNTIME_DIR/blinools/<name>.lock` | Empty file, locked while blinools works on that sandbox | Until the sandbox is shutdown |
-| `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | The qcow2 disk overlay holding everything written inside the guest | Persists across restarts, until `sandbox delete` or `--recreate` |
+| `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | The qcow2 disk overlay holding everything written inside the guest | Persists across restarts, until `sandbox delete` or `--recreate` or `--delete-after-shutdown` |
 
 ## License
 
