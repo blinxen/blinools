@@ -65,6 +65,8 @@ impl Hypervisor for CloudHypervisor {
         command
             .arg("--api-socket")
             .arg(&api_socket)
+            .arg("--log-file")
+            .arg(api_socket.with_extension("log"))
             .arg("--kernel")
             .arg(cfg.kernel)
             .arg("--landlock")
@@ -94,6 +96,15 @@ impl Hypervisor for CloudHypervisor {
             .stdin(cfg.console.stdin)
             .stdout(cfg.console.stdout)
             .stderr(cfg.console.stderr);
+
+        if log::log_enabled!(log::Level::Trace) {
+            command.arg("-vvv");
+        } else if log::log_enabled!(log::Level::Debug) {
+            command.arg("-vv");
+        } else if log::log_enabled!(log::Level::Info) {
+            command.arg("-v");
+        };
+
         die_with_parent(&mut command);
 
         let handle = command.spawn().context("spawning cloud-hypervisor")?;
