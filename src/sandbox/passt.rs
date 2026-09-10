@@ -58,7 +58,9 @@ impl PasstNetwork {
             "-u",
             "none",
             "--address",
-            "10.200.0.2/24",
+            "10.200.0.2",
+            "--netmask",
+            "24",
             "--gateway",
             "10.200.0.1",
         ])
