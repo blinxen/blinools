@@ -55,9 +55,10 @@ pub trait Hypervisor {
     fn state(&self, sandbox_runtime_dir: &Path) -> State;
 }
 
-pub fn new(config: &Config) -> Box<dyn Hypervisor> {
+pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {
     let mut binary = PathBuf::from("cloud-hypervisor");
-    if let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
+    if let Some(config) = config
+        && let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
         && let Some(configured) = cloud_hypervisor.binary.as_ref()
     {
         binary = configured.to_path_buf();
