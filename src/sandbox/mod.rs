@@ -9,7 +9,9 @@ pub mod hypervisor;
 pub mod name;
 
 use std::{
-    ffi::OsStr, io::Write, path::{Path, PathBuf},
+    ffi::OsStr,
+    io::Write,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Context;
@@ -104,8 +106,8 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
         }
         Command::Delete { name, force } => {
             delete_sandbox(hypervisor.as_ref(), &name, force)?;
-        },
-        Command::Prune => prune_sandboxes(hypervisor.as_ref())?
+        }
+        Command::Prune => prune_sandboxes(hypervisor.as_ref())?,
     };
 
     Ok(())
@@ -228,13 +230,17 @@ fn prune_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
     print!("Are you sure you want to continue? [y/N] ");
     let _ = std::io::stdout().flush();
     let mut input = String::new();
-    std::io::stdin().read_line(&mut input).context("reading user input")?;
+    std::io::stdin()
+        .read_line(&mut input)
+        .context("reading user input")?;
     if input.to_lowercase().trim() != "y" {
         return Ok(());
     }
 
     for sandbox in existing_sandbox_names() {
-        if let Some(name) = Name::sanitize(&sandbox) && !hypervisor.is_running(&runtime_dir().join(&name)) {
+        if let Some(name) = Name::sanitize(&sandbox)
+            && !hypervisor.is_running(&runtime_dir().join(&name))
+        {
             if let Err(err) = delete_sandbox(hypervisor, &name, false) {
                 println!("{err}");
                 log::warn!("could not delete {name}: {err}");
