@@ -9,8 +9,7 @@ pub mod hypervisor;
 pub mod name;
 
 use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
+    ffi::OsStr, io::Write, path::{Path, PathBuf},
 };
 
 use anyhow::Context;
@@ -76,15 +75,15 @@ pub enum Command {
         #[arg(short = 'f', long = "force", default_value_t = false)]
         force: bool,
     },
+    /// Delete all stopped sandboxes
+    Prune,
 }
 
 pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), anyhow::Error> {
     let hypervisor = hypervisor::new(config.as_ref());
 
     match command {
-        Command::Ps => {
-            list_sandboxes(hypervisor.as_ref())?;
-        }
+        Command::Ps => list_sandboxes(hypervisor.as_ref())?,
         Command::Create {
             shares,
             name,
@@ -105,7 +104,8 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
         }
         Command::Delete { name, force } => {
             delete_sandbox(hypervisor.as_ref(), &name, force)?;
-        }
+        },
+        Command::Prune => prune_sandboxes(hypervisor.as_ref())?
     };
 
     Ok(())
@@ -219,6 +219,30 @@ fn list_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
         .collect();
 
     println!("{}", Table::new(sandbox_infos));
+
+    Ok(())
+}
+
+fn prune_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
+    println!("This command will delete ALL stopped sandboxes including their state.");
+    print!("Are you sure you want to continue? [y/N] ");
+    let _ = std::io::stdout().flush();
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input).context("reading user input")?;
+    if input.to_lowercase().trim() != "y" {
+        return Ok(());
+    }
+
+    for sandbox in existing_sandbox_names() {
+        if let Some(name) = Name::sanitize(&sandbox) && !hypervisor.is_running(&runtime_dir().join(&name)) {
+            if let Err(err) = delete_sandbox(hypervisor, &name, false) {
+                println!("{err}");
+                log::warn!("could not delete {name}: {err}");
+            }
+        } else {
+            log::warn!("unexpected invalid sandbox name: {sandbox}");
+        }
+    }
 
     Ok(())
 }

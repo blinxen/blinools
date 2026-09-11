@@ -297,6 +297,15 @@ blinools sandbox delete <NAME> [-f|--force]
 Without `--force`, deleting a running sandbox fails with an error asking you
 to shut it down first (or pass `--force`).
 
+
+### `sandbox prune`
+
+Delete all sandboxes that are not running. This command also deletes their state.
+
+```bash
+blinools sandbox prune
+```
+
 ## License
 
 The source code is primarily distributed under the terms of the MIT License.
