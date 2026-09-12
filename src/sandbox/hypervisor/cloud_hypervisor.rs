@@ -116,13 +116,22 @@ impl Hypervisor for CloudHypervisor {
         can_connect_to_socket(&socket_path_in(sandbox_runtime_dir, SOCKET_NAME))
     }
 
-    fn shutdown(&self, sandbox_runtime_dir: &Path) -> Result<(), anyhow::Error> {
+    fn shutdown(&self, sandbox_runtime_dir: &Path, force: bool) -> Result<(), anyhow::Error> {
         let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
         if can_connect_to_socket(&api_socket_path) {
-            let response = api(&api_socket_path, "PUT", "vmm.shutdown", None)
+            let vm_response = api(&api_socket_path, "PUT", "vm.shutdown", None)
                 .context("requesting cloud hypervisor to shut down the sandbox")?;
 
-            if !response.success() {
+            if !force && !vm_response.success() {
+                return Err(anyhow::anyhow!(
+                    "shutting down the sandbox was not successful"
+                ));
+            }
+
+            let vmm_response = api(&api_socket_path, "PUT", "vmm.shutdown", None)
+                .context("requesting cloud hypervisor to shut down the sandbox")?;
+
+            if !vmm_response.success() {
                 return Err(anyhow::anyhow!(
                     "shutting down the sandbox was not successful"
                 ));
