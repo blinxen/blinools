@@ -62,11 +62,18 @@ pub enum Command {
         #[arg(long = "delete-after-shutdown", default_value_t = false)]
         delete_after_shutdown: bool,
     },
-    /// Shutdown a sandbox
+    /// Gracefully shutdown a sandbox
     Shutdown {
         /// Sandbox name
         #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
         name: Name,
+        /// Force a shutdown and ignore failures
+        ///
+        /// This flag does not affect how we shutdown the VMM itself.
+        /// If the VMM does not shutdown cleanly then a error will be shown.
+        /// The flag just ignores a sandbox shutdown error.
+        #[arg(short = 'f', long = "force", default_value_t = false)]
+        force: bool,
     },
     /// Delete a sandbox
     Delete {
@@ -101,8 +108,8 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
                 delete_after_shutdown,
             )?;
         }
-        Command::Shutdown { name } => {
-            hypervisor.shutdown(&runtime_dir().join(&name))?;
+        Command::Shutdown { name, force } => {
+            hypervisor.shutdown(&runtime_dir().join(&name), force)?;
         }
         Command::Delete { name, force } => {
             delete_sandbox(hypervisor.as_ref(), &name, force)?;
@@ -191,7 +198,7 @@ fn delete_sandbox(
         ));
     }
 
-    hypervisor.shutdown(&sandbox_runtime_dir)?;
+    hypervisor.shutdown(&sandbox_runtime_dir, force)?;
     if sandbox_runtime_dir.exists() {
         std::fs::remove_dir_all(sandbox_runtime_dir)
             .context("cleaning up sandbox runtime directory")?;

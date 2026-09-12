@@ -275,11 +275,15 @@ If you are not using `systemd` then you can manually mount the shares with `moun
 
 ### `sandbox shutdown`
 
-Asks a running sandbox to shut down. No-op if the sandbox isn't running.
+Asks a running sandbox to shut down gracefully. No-op if the sandbox isn't running.
 
 ```bash
 blinools sandbox shutdown <NAME>
 ```
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `-f, --force` | `false` | Force a shutdown and ignore failures. |
 
 ### `sandbox delete`
 

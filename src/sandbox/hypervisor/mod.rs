@@ -56,7 +56,7 @@ pub trait Hypervisor {
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool;
 
-    fn shutdown(&self, sandbox_runtime_dir: &Path) -> Result<(), anyhow::Error>;
+    fn shutdown(&self, sandbox_runtime_dir: &Path, force: bool) -> Result<(), anyhow::Error>;
 
     fn state(&self, sandbox_runtime_dir: &Path) -> State;
 }
