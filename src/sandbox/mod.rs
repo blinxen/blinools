@@ -25,7 +25,7 @@ use crate::{
         config::FsShare,
         console::{Console, ConsoleExit},
         fs::FsMount,
-        hypervisor::{Hypervisor, VmConfig, cloud_hypervisor},
+        hypervisor::{Hypervisor, VmConfig},
         lock::SandboxLock,
         name::Name,
     },
@@ -292,12 +292,13 @@ fn complete_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
 }
 
 fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), anyhow::Error> {
-    let mut paths = vec![
-        socket_path(name, cloud_hypervisor::SOCKET_NAME),
-        socket_path(name, "passt"),
-    ];
+    let mut paths = vec![socket_path(name, "passt")];
     for share in shares {
         paths.push(socket_path(name, &format!("vfsd-{}", share.name)));
+    }
+
+    for path in hypervisor::socket_paths_to_validate() {
+        paths.push(socket_path(name, path));
     }
 
     for path in paths {
