@@ -1,4 +1,4 @@
-pub mod cloud_hypervisor;
+mod cloud_hypervisor;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -71,6 +71,10 @@ pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {
     }
 
     Box::new(CloudHypervisor::new(binary))
+}
+
+pub fn socket_paths_to_validate() -> Vec<&'static str> {
+    vec![cloud_hypervisor::SOCKET_NAME]
 }
 
 fn create_qcow2_overlay(cfg: &VmConfig) -> Result<PathBuf, anyhow::Error> {
