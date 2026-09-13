@@ -7,7 +7,10 @@ use std::time::Duration;
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::sandbox::hypervisor::{Hypervisor, State, Vm, VmConfig, create_qcow2_overlay};
+use crate::sandbox::config::Config;
+use crate::sandbox::hypervisor::{
+    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
+};
 use crate::sandbox::process::{die_with_parent, kill_child_and_cleanup, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
@@ -20,7 +23,14 @@ pub struct CloudHypervisor {
 }
 
 impl CloudHypervisor {
-    pub fn new(binary: PathBuf) -> Self {
+    pub fn new(config: Option<&Config>) -> Self {
+        let mut binary = PathBuf::from("cloud-hypervisor");
+        if let Some(config) = config
+            && let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
+            && let Some(configured) = cloud_hypervisor.binary.as_ref()
+        {
+            binary = configured.to_path_buf();
+        }
         CloudHypervisor { binary }
     }
 }
@@ -28,11 +38,7 @@ impl CloudHypervisor {
 impl Hypervisor for CloudHypervisor {
     fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
         let mut mounts: Vec<String> = Vec::new();
-        let mut cmdline = format!(
-            "console=hvc0 root=/dev/vda rw systemd.hostname={} ",
-            cfg.name
-        );
-        cmdline.push_str(cfg.cmdline);
+        let cmdline = guest_cmdline(&cfg);
 
         for mount in cfg.mounts {
             mounts.push("--fs".into());
@@ -41,16 +47,6 @@ impl Hypervisor for CloudHypervisor {
                 mount.tag,
                 mount.socket_path.display()
             ));
-            cmdline.push_str(" systemd.mount-extra=");
-            cmdline.push_str(mount.tag.as_str());
-            cmdline.push_str(":/mnt/");
-            cmdline.push_str(mount.tag.as_str());
-            cmdline.push_str(":virtiofs:");
-            if mount.read_only {
-                cmdline.push_str("ro");
-            } else {
-                cmdline.push_str("rw");
-            }
         }
 
         let api_socket = socket_path(cfg.name, SOCKET_NAME);
@@ -104,6 +100,7 @@ impl Hypervisor for CloudHypervisor {
 
         die_with_parent(&mut command);
 
+        log::debug!("Starting command: {:?}", command);
         let handle = command.spawn().context("spawning cloud-hypervisor")?;
 
         Ok(Box::new(CloudHypervisorVm {
@@ -150,7 +147,7 @@ impl Hypervisor for CloudHypervisor {
         match api(&api_socket_path, "GET", "vm.info", None) {
             Ok(response) if response.success() => {
                 match serde_json::from_str::<ChInfo>(&response.body) {
-                    Ok(info) => State::Running(info.state),
+                    Ok(info) => State::Running(info.state.to_uppercase()),
                     Err(_) => State::Unknown,
                 }
             }
@@ -202,10 +199,6 @@ impl ApiResponse {
     pub fn success(&self) -> bool {
         (200..300).contains(&self.status_code)
     }
-}
-
-fn can_connect_to_socket(socket_path: &Path) -> bool {
-    socket_path.exists() && UnixStream::connect(socket_path).is_ok()
 }
 
 // See
@@ -375,7 +368,7 @@ mod tests {
     fn the_state_is_read_from_the_socket_boot_creates() {
         let dir = tempdir().unwrap();
         serve(&socket_path_in(dir.path(), SOCKET_NAME), answer_vm_info);
-        let hypervisor = CloudHypervisor::new(PathBuf::from("cloud-hypervisor"));
+        let hypervisor = CloudHypervisor::new(None);
 
         assert!(hypervisor.is_running(dir.path()));
         assert_eq!(hypervisor.state(dir.path()).to_string(), "Running");
@@ -384,7 +377,7 @@ mod tests {
     #[test]
     fn a_sandbox_without_a_socket_is_stopped() {
         let dir = tempdir().unwrap();
-        let hypervisor = CloudHypervisor::new(PathBuf::from("cloud-hypervisor"));
+        let hypervisor = CloudHypervisor::new(None);
 
         assert!(!hypervisor.is_running(dir.path()));
         assert!(matches!(hypervisor.state(dir.path()), State::Stopped));
