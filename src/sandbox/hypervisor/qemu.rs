@@ -306,11 +306,14 @@ mod tests {
     #[test]
     fn the_state_is_read_from_the_socket_boot_creates() {
         let dir = tempdir().unwrap();
-        serve(&socket_path_in(dir.path(), SOCKET_NAME), answer_query_status);
+        serve(
+            &socket_path_in(dir.path(), SOCKET_NAME),
+            answer_query_status,
+        );
         let hypervisor = Qemu::new(None);
 
         assert!(hypervisor.is_running(dir.path()));
-        assert_eq!(hypervisor.state(dir.path()).to_string(), "Running");
+        assert_eq!(hypervisor.state(dir.path()).to_string(), "RUNNING");
     }
 
     #[test]

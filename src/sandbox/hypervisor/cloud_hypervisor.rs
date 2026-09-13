@@ -371,7 +371,7 @@ mod tests {
         let hypervisor = CloudHypervisor::new(None);
 
         assert!(hypervisor.is_running(dir.path()));
-        assert_eq!(hypervisor.state(dir.path()).to_string(), "Running");
+        assert_eq!(hypervisor.state(dir.path()).to_string(), "RUNNING");
     }
 
     #[test]
