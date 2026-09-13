@@ -2,7 +2,6 @@
 virtiofsd.binary = "/usr/libexec/virtiofsd"
 
 kernel = "./examples/fedora/kernel"
-kernel_cmdline = "rw quiet"
 rootfs = "./examples/fedora/rootfs.img"
 network = "None"
 memory_mb = 8192

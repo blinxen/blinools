@@ -8,6 +8,14 @@ use std::{
 
 use crate::sandbox::name::Name;
 
+#[derive(PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub enum Hypervisor {
+    Qemu,
+    #[default]
+    CloudHypervisor,
+}
+
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub enum RootfsType {
@@ -36,6 +44,9 @@ impl fmt::Display for RootfsType {
 #[derive(Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[garde(skip)]
+    #[serde(default)]
+    pub hypervisor: Hypervisor,
     #[garde(skip)]
     #[serde(default = "default_sandbox_name")]
     pub name: Name,
@@ -77,6 +88,8 @@ pub struct Config {
     pub passt: Option<BinaryConfig>,
     #[garde(dive)]
     pub virtiofsd: Option<BinaryConfig>,
+    #[garde(dive)]
+    pub qemu: Option<BinaryConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

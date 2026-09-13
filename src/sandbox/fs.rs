@@ -101,6 +101,7 @@ impl FsMount {
             cmd.pre_exec(move || isolate_share(&s));
         }
 
+        log::debug!("Starting command: {:?}", cmd);
         let mut child = cmd.spawn().context("spawning virtiofsd")?;
         if let Err(error) = wait_for_socket(&socket_path, &mut child, Duration::from_secs(10)) {
             kill_child_and_cleanup(&mut child, &[&socket_path]);

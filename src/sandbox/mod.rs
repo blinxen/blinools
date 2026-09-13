@@ -25,7 +25,7 @@ use crate::{
         config::FsShare,
         console::{Console, ConsoleExit},
         fs::FsMount,
-        hypervisor::{Hypervisor, VmConfig},
+        hypervisor::VmConfig,
         lock::SandboxLock,
         name::Name,
     },
@@ -89,10 +89,8 @@ pub enum Command {
 }
 
 pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), anyhow::Error> {
-    let hypervisor = hypervisor::new(config.as_ref());
-
     match command {
-        Command::Ps => list_sandboxes(hypervisor.as_ref())?,
+        Command::Ps => list_sandboxes(config.as_ref())?,
         Command::Create {
             shares,
             name,
@@ -101,7 +99,6 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
         } => {
             create_sandbox(
                 config.context("the configuration has no `sandbox` section")?,
-                hypervisor,
                 shares,
                 name,
                 recreate,
@@ -109,12 +106,14 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
             )?;
         }
         Command::Shutdown { name, force } => {
-            hypervisor.shutdown(&runtime_dir().join(&name), force)?;
+            let sandbox_runtime_dir = runtime_dir().join(&name);
+            hypervisor::for_sandbox(config.as_ref(), &sandbox_runtime_dir)
+                .shutdown(&sandbox_runtime_dir, force)?;
         }
         Command::Delete { name, force } => {
-            delete_sandbox(hypervisor.as_ref(), &name, force)?;
+            delete_sandbox(config.as_ref(), &name, force)?;
         }
-        Command::Prune => prune_sandboxes(hypervisor.as_ref())?,
+        Command::Prune => prune_sandboxes(config.as_ref())?,
     };
 
     Ok(())
@@ -122,7 +121,6 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
 
 fn create_sandbox(
     mut config: config::Config,
-    hypervisor: Box<dyn Hypervisor>,
     shares: Vec<FsShare>,
     name: Option<Name>,
     recreate: bool,
@@ -131,7 +129,8 @@ fn create_sandbox(
     if let Some(name) = name {
         config.name = name;
     }
-    ensure_unique_name(hypervisor.as_ref(), &config.name)?;
+    ensure_unique_name(Some(&config), &config.name)?;
+    let hypervisor = hypervisor::new(Some(&config));
     let lock = SandboxLock::try_acquire(&config.name)?
         .context("failed to acquire lock, a sandbox with the same name is already running")?;
     create_dir(&runtime_dir().join(&config.name))
@@ -177,19 +176,20 @@ fn create_sandbox(
     // Drop must happen here because delete will try to acquire the lock too
     drop(lock);
     if delete_after_shutdown {
-        delete_sandbox(hypervisor.as_ref(), &config.name, true)?;
+        delete_sandbox(Some(&config), &config.name, true)?;
     }
 
     Ok(())
 }
 
 fn delete_sandbox(
-    hypervisor: &dyn Hypervisor,
+    config: Option<&config::Config>,
     name: &Name,
     force: bool,
 ) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(name);
     let sandbox_state_dir = state_dir()?.join(name);
+    let hypervisor = hypervisor::for_sandbox(config, &sandbox_runtime_dir);
 
     let lock = SandboxLock::try_acquire(name)?;
     if !force && (lock.is_none() || hypervisor.is_running(&sandbox_runtime_dir)) {
@@ -217,13 +217,18 @@ pub struct SandboxInfo {
     pub state: String,
 }
 
-fn list_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
+fn list_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error> {
     let base_dir = runtime_dir();
     let sandbox_infos: Vec<SandboxInfo> = existing_sandbox_names()
         .into_iter()
-        .map(|name| SandboxInfo {
-            state: hypervisor.state(&base_dir.join(&name)).to_string(),
-            name,
+        .map(|name| {
+            let sandbox_runtime_dir = base_dir.join(&name);
+            SandboxInfo {
+                state: hypervisor::for_sandbox(config, &sandbox_runtime_dir)
+                    .state(&sandbox_runtime_dir)
+                    .to_string(),
+                name,
+            }
         })
         .collect();
 
@@ -232,7 +237,7 @@ fn list_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn prune_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
+fn prune_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error> {
     println!("This command will delete ALL stopped sandboxes including their state.");
     print!("Are you sure you want to continue? [y/N] ");
     let _ = std::io::stdout().flush();
@@ -246,9 +251,11 @@ fn prune_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
 
     for sandbox in existing_sandbox_names() {
         if let Some(name) = Name::sanitize(&sandbox)
-            && !hypervisor.is_running(&runtime_dir().join(&name))
+            && let sandbox_runtime_dir = runtime_dir().join(&name)
+            && !hypervisor::for_sandbox(config, &sandbox_runtime_dir)
+                .is_running(&sandbox_runtime_dir)
         {
-            if let Err(err) = delete_sandbox(hypervisor, &name, false) {
+            if let Err(err) = delete_sandbox(config, &name, false) {
                 println!("{err}");
                 log::warn!("could not delete {name}: {err}");
             }
@@ -260,8 +267,9 @@ fn prune_sandboxes(hypervisor: &dyn Hypervisor) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn ensure_unique_name(hypervisor: &dyn Hypervisor, name: &Name) -> Result<(), anyhow::Error> {
-    if hypervisor.is_running(&runtime_dir().join(name)) {
+fn ensure_unique_name(config: Option<&config::Config>, name: &Name) -> Result<(), anyhow::Error> {
+    let sandbox_runtime_dir = runtime_dir().join(name);
+    if hypervisor::for_sandbox(config, &sandbox_runtime_dir).is_running(&sandbox_runtime_dir) {
         return Err(anyhow::anyhow!(
             "a sandbox with the same name already exists"
         ));

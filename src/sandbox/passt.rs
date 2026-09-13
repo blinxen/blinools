@@ -38,7 +38,6 @@ impl PasstNetwork {
         }
 
         let mut cmd = Command::new(binary_path);
-        // TODO: Probably want to enter a network namespace before starting passt
         cmd.args([
             "--vhost-user",
             "--socket",
@@ -79,6 +78,7 @@ impl PasstNetwork {
 
         die_with_parent(&mut cmd);
 
+        log::debug!("Starting command: {:?}", cmd);
         let mut handle = cmd.spawn().context("spawing passt")?;
         if let Err(error) = wait_for_socket(&socket_path, &mut handle, SOCKET_TIMEOUT) {
             kill_child_and_cleanup(&mut handle, &[&socket_path]);

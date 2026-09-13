@@ -1,6 +1,8 @@
 mod cloud_hypervisor;
+mod qemu;
 
 use std::fmt;
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
@@ -10,10 +12,11 @@ use imago::qcow2::{Qcow2, Qcow2CreateBuilder};
 use imago::{FormatCreateBuilder, Storage};
 
 use crate::config::state_dir;
-use crate::sandbox::config::{Config, RootfsType};
+use crate::sandbox::config::{self, Config, RootfsType};
 use crate::sandbox::console::ConsoleIo;
 use crate::sandbox::fs::FsMount;
 use crate::sandbox::hypervisor::cloud_hypervisor::CloudHypervisor;
+use crate::sandbox::hypervisor::qemu::Qemu;
 use crate::sandbox::name::Name;
 
 pub struct VmConfig<'sandbox> {
@@ -62,19 +65,59 @@ pub trait Hypervisor {
 }
 
 pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {
-    let mut binary = PathBuf::from("cloud-hypervisor");
     if let Some(config) = config
-        && let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
-        && let Some(configured) = cloud_hypervisor.binary.as_ref()
+        && config.hypervisor == config::Hypervisor::Qemu
     {
-        binary = configured.to_path_buf();
+        Box::new(Qemu::new(Some(config)))
+    } else {
+        Box::new(CloudHypervisor::new(config))
+    }
+}
+
+pub fn for_sandbox(config: Option<&Config>, sandbox_runtime_dir: &Path) -> Box<dyn Hypervisor> {
+    let candidates: [Box<dyn Hypervisor>; 2] = [
+        Box::new(CloudHypervisor::new(config)),
+        Box::new(Qemu::new(config)),
+    ];
+
+    for candidate in candidates {
+        if candidate.is_running(sandbox_runtime_dir) {
+            return candidate;
+        }
     }
 
-    Box::new(CloudHypervisor::new(binary))
+    new(config)
 }
 
 pub fn socket_paths_to_validate() -> Vec<&'static str> {
-    vec![cloud_hypervisor::SOCKET_NAME]
+    vec![cloud_hypervisor::SOCKET_NAME, qemu::SOCKET_NAME]
+}
+
+fn guest_cmdline(cfg: &VmConfig) -> String {
+    let mut cmdline = format!(
+        "console=hvc0 root=/dev/vda rw systemd.hostname={} ",
+        cfg.name
+    );
+    cmdline.push_str(cfg.cmdline);
+
+    for mount in cfg.mounts {
+        cmdline.push_str(" systemd.mount-extra=");
+        cmdline.push_str(mount.tag.as_str());
+        cmdline.push_str(":/mnt/");
+        cmdline.push_str(mount.tag.as_str());
+        cmdline.push_str(":virtiofs:");
+        if mount.read_only {
+            cmdline.push_str("ro");
+        } else {
+            cmdline.push_str("rw");
+        }
+    }
+
+    cmdline
+}
+
+fn can_connect_to_socket(socket_path: &Path) -> bool {
+    socket_path.exists() && UnixStream::connect(socket_path).is_ok()
 }
 
 fn create_qcow2_overlay(cfg: &VmConfig) -> Result<PathBuf, anyhow::Error> {
