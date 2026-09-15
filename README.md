@@ -190,8 +190,8 @@ You don't *have* to actually compile your own kernel, you can just use whatever
 your distro provides. The example configuration below uses the official Fedora 44 kernel.
 The rootfs can also be easily created using `podman` (or `docker`).
 Check out the [examples](./examples) directory. The example builds a minimal Fedora
-kernel + rootfs pair with `examples/fedora/Dockerfile` and
-`examples/fedora/build-rootfs.sh`.
+kernel + rootfs pair with `examples/basic/Dockerfile` and
+`examples/basic/build-rootfs.sh`.
 
 The next steps assume you already have a compiled Linux kernel and a built rootfs.
 See [Configuration reference](#configuration-reference) below for the full list of options.
