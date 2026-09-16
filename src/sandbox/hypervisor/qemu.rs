@@ -47,7 +47,7 @@ struct QmpStatus {
 
 impl Hypervisor for Qemu {
     fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
-        let mut mount_args: Vec<String> = Vec::new();
+        let mut mount_args = Vec::new();
         let cmdline = guest_cmdline(&cfg);
 
         for mount in cfg.mounts {
@@ -73,27 +73,25 @@ impl Hypervisor for Qemu {
         command
             .arg("-machine")
             .arg(format!(
-                "microvm,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off,\
+                "microvm,pit=off,pic=off,isa-serial=off,rtc=off,\
                  memory-backend={MEMORY_BACKEND}"
             ))
+            .arg("-enable-kvm")
+            .arg("-cpu")
+            .arg("host")
+            .arg("-smp")
+            .arg(cfg.cpus.to_string())
+            .arg("-m")
+            .arg(format!("{}m", cfg.memory_mb))
             .arg("-object")
             .arg(format!(
                 "memory-backend-memfd,id={MEMORY_BACKEND},size={}M,share=on",
                 cfg.memory_mb
             ))
-            .arg("-enable-kvm")
-            .arg("-cpu")
-            .arg("host")
-            .arg("-m")
-            .arg(format!("{}m", cfg.memory_mb))
-            .arg("-smp")
-            .arg(cfg.cpus.to_string())
             .arg("-kernel")
             .arg(cfg.kernel)
             .arg("-append")
             .arg(cmdline)
-            .arg("-serial")
-            .arg("stdio")
             .arg("-nodefaults")
             .arg("-no-reboot")
             .arg("-no-user-config")
