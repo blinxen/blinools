@@ -73,7 +73,7 @@ impl Hypervisor for Qemu {
         command
             .arg("-machine")
             .arg(format!(
-                "microvm,x-option-roms=off,pit=on,pic=off,isa-serial=off,rtc=off,\
+                "microvm,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off,\
                  memory-backend={MEMORY_BACKEND}"
             ))
             .arg("-object")
@@ -92,10 +92,12 @@ impl Hypervisor for Qemu {
             .arg(cfg.kernel)
             .arg("-append")
             .arg(cmdline)
+            .arg("-serial")
+            .arg("stdio")
             .arg("-nodefaults")
+            .arg("-no-reboot")
             .arg("-no-user-config")
-            .arg("-display")
-            .arg("none")
+            .arg("-nographic")
             .arg("-chardev")
             // "signal=off" keeps qemu from eating Ctrl-C
             // the guest is supposed to see it
