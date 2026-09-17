@@ -100,6 +100,11 @@ impl Hypervisor for Qemu {
             // "signal=off" keeps qemu from eating Ctrl-C
             // the guest is supposed to see it
             .arg("stdio,id=virtiocon0,signal=off")
+            .arg("-sandbox")
+            .arg("on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny")
+            // TODO: Add these flags
+            // .arg("-run-with")
+            // .arg("chroot=,user=qemu")
             .arg("-device")
             .arg("virtio-serial-device")
             .arg("-device")
