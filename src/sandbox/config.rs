@@ -11,8 +11,8 @@ use crate::sandbox::name::Name;
 #[derive(PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub enum Hypervisor {
-    Qemu,
     #[default]
+    Qemu,
     CloudHypervisor,
 }
 
