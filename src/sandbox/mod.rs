@@ -1,3 +1,4 @@
+mod cgroup;
 mod console;
 mod fs;
 mod lock;
@@ -20,8 +21,9 @@ use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 use tabled::{Table, Tabled};
 
 use crate::{
-    config::{create_dir, runtime_dir, state_dir},
+    config::{cgroup_dir, create_dir, runtime_dir, state_dir},
     sandbox::{
+        cgroup::CGroup,
         config::FsShare,
         console::{Console, ConsoleExit},
         fs::FsMount,
@@ -151,8 +153,11 @@ fn create_sandbox(
         }
 
         let mut console = Console::new()?;
-        let mut vm = hypervisor.boot(VmConfig {
+        let cgroup = cgroup_dir().join(&config.name);
+        let cgroup_created = create_dir(&cgroup);
+        let mut cfg = VmConfig {
             name: &config.name,
+            cgroup: None,
             kernel: &config.kernel,
             rootfs: &config.rootfs,
             rootfs_type: &config.rootfs_type,
@@ -160,10 +165,14 @@ fn create_sandbox(
             network_socket: passt_network.as_ref().map(|p| p.socket_path()),
             cmdline: &config.kernel_cmdline,
             memory_mb: config.memory_mb,
-            cpus: config.cpus,
+            cpus: config.cpus as f64,
             mounts: &mounts,
             console: console.take_slave()?,
-        })?;
+        };
+        if !cgroup_created.is_err() {
+            cfg.cgroup = CGroup::create(&cgroup, &cfg);
+        }
+        let mut vm = hypervisor.boot(cfg)?;
 
         match console.read_until_terminated()? {
             ConsoleExit::GuestGone => {

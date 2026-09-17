@@ -139,6 +139,9 @@ impl Hypervisor for Qemu {
         }
 
         die_with_parent(&mut command);
+        if let Some(cgroup) = cfg.cgroup {
+            cgroup.enter(&mut command);
+        }
 
         command
             .stdin(cfg.console.stdin)

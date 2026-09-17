@@ -78,10 +78,7 @@ impl Hypervisor for CloudHypervisor {
             .arg("--serial")
             .arg("off")
             .arg("--console")
-            .arg("tty")
-            .stdin(cfg.console.stdin)
-            .stdout(cfg.console.stdout)
-            .stderr(cfg.console.stderr);
+            .arg("tty");
 
         if let Some(network_socket) = cfg.network_socket {
             command.arg("--net").arg(format!(
@@ -99,6 +96,14 @@ impl Hypervisor for CloudHypervisor {
         };
 
         die_with_parent(&mut command);
+        if let Some(cgroup) = cfg.cgroup {
+            cgroup.enter(&mut command);
+        }
+
+        command
+            .stdin(cfg.console.stdin)
+            .stdout(cfg.console.stdout)
+            .stderr(cfg.console.stderr);
 
         log::debug!("Starting command: {:?}", command);
         let handle = command.spawn().context("spawning cloud-hypervisor")?;

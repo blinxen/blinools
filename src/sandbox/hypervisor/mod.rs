@@ -12,6 +12,7 @@ use imago::qcow2::{Qcow2, Qcow2CreateBuilder};
 use imago::{FormatCreateBuilder, Storage};
 
 use crate::config::state_dir;
+use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{self, Config, RootfsType};
 use crate::sandbox::console::ConsoleIo;
 use crate::sandbox::fs::FsMount;
@@ -21,6 +22,7 @@ use crate::sandbox::name::Name;
 
 pub struct VmConfig<'sandbox> {
     pub name: &'sandbox Name,
+    pub cgroup: Option<CGroup>,
     pub kernel: &'sandbox Path,
     pub rootfs: &'sandbox Path,
     pub rootfs_type: &'sandbox RootfsType,
@@ -28,7 +30,7 @@ pub struct VmConfig<'sandbox> {
     pub network_socket: Option<&'sandbox Path>,
     pub cmdline: &'sandbox str,
     pub memory_mb: u64,
-    pub cpus: u8,
+    pub cpus: f64,
     pub mounts: &'sandbox [FsMount],
     pub console: ConsoleIo,
 }
