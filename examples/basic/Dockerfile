@@ -22,7 +22,6 @@ RUN --mount=type=cache,target=/var/cache/libdnf5,sharing=locked \
         iproute \
         iputils \
         procps-ng \
-        kernel-modules \
         ncurses \
         neovim \
         ripgrep \
@@ -97,6 +96,3 @@ RUN groupadd -f "${VM_USER}" && \
 # ========================================================================== #
 RUN rm -rf /var/lib/dnf/history* /var/log/dnf* /tmp/* && \
     rm -f /etc/machine-id && touch /etc/machine-id
-
-FROM scratch AS kernel
-COPY --from=base /usr/lib/modules/*.x86_64/vmlinuz /kernel
