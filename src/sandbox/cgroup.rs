@@ -18,7 +18,11 @@ impl CGroup {
             log::warn!("could not create cgroup");
             return None;
         }
-        std::fs::write(path.join("cgroup.subtree_control"), format!("+cpu +memory +pids")).ok()?;
+        std::fs::write(
+            path.join("cgroup.subtree_control"),
+            String::from("+cpu +memory +pids"),
+        )
+        .ok()?;
         // cpu
         // matches the kernel default (100ms)
         let cpu_period = 100_000u64;
@@ -32,9 +36,7 @@ impl CGroup {
         // pids
         fs::write(path.join("pids.max"), "1024").ok()?;
 
-        Some(Self {
-            path
-        })
+        Some(Self { path })
     }
 
     pub fn enter(&self, command: &mut Command) {

@@ -271,7 +271,10 @@ fn prune_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error>
     Ok(())
 }
 
-fn ensure_unique_sandbox_name(config: Option<&config::Config>, name: &Name) -> Result<(), anyhow::Error> {
+fn ensure_unique_sandbox_name(
+    config: Option<&config::Config>,
+    name: &Name,
+) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(name);
     if hypervisor::for_sandbox(config, &sandbox_runtime_dir).is_running(&sandbox_runtime_dir) {
         return Err(anyhow::anyhow!(
