@@ -6,6 +6,7 @@ use std::process::Command;
 
 use crate::sandbox::hypervisor::VmConfig;
 
+#[derive(Debug)]
 pub struct CGroup {
     path: PathBuf,
 }
@@ -22,12 +23,8 @@ impl CGroup {
         let cpu_quota = (cpu_period as f64 * cfg.cpus) as u64;
         fs::write(cgroup.join("cpu.max"), format!("{cpu_quota} {cpu_period}")).ok()?;
         // memory
-        let memory_bytes = cfg.memory_mb * 1024 * 1024;
-        fs::write(
-            cgroup.join("memory.high"),
-            (memory_bytes * 9 / 10).to_string(),
-        )
-        .ok()?;
+        // 256MB overhead for qemu etc.
+        let memory_bytes = cfg.memory_mb * 1024 * 1024 + (256 * 1024 * 1024);
         fs::write(cgroup.join("memory.max"), memory_bytes.to_string()).ok()?;
         fs::write(cgroup.join("memory.swap.max"), "0").ok()?;
         // pids

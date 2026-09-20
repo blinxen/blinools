@@ -135,10 +135,12 @@ fn create_sandbox(
     let hypervisor = hypervisor::new(Some(&config));
     let lock = SandboxLock::try_acquire(&config.name)?
         .context("failed to acquire lock, a sandbox with the same name is already running")?;
+    // Create various directories that we need later
     create_dir(&runtime_dir().join(&config.name))
         .context("creating runtime directory for sandbox")?;
     create_dir(&state_dir()?.join(&config.name)).context("creating state directory for sandbox")?;
-
+    let cgroup = cgroup_dir().join(&config.name);
+    let _ = create_dir(&cgroup);
     let shares = config::merge_by_name(config.shares.as_ref(), shares);
     validate_socket_path_lengths(&config.name, &shares)?;
 
@@ -153,8 +155,6 @@ fn create_sandbox(
         }
 
         let mut console = Console::new()?;
-        let cgroup = cgroup_dir().join(&config.name);
-        let cgroup_created = create_dir(&cgroup);
         let mut cfg = VmConfig {
             name: &config.name,
             cgroup: None,
@@ -169,11 +169,8 @@ fn create_sandbox(
             mounts: &mounts,
             console: console.take_slave()?,
         };
-        if !cgroup_created.is_err() {
-            cfg.cgroup = CGroup::create(&cgroup, &cfg);
-        }
+        cfg.cgroup = CGroup::create(&cgroup, &cfg);
         let mut vm = hypervisor.boot(cfg)?;
-
         match console.read_until_terminated()? {
             ConsoleExit::GuestGone => {
                 vm.wait().context("waiting for sandbox to exit")?;

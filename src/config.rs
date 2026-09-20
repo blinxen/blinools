@@ -57,7 +57,12 @@ fn config_dir() -> Option<PathBuf> {
 pub fn setup_dirs() -> Result<(), anyhow::Error> {
     create_dir(&runtime_dir()).context("creating runtime directory")?;
     create_dir(&state_dir()?).context("creating state directory")?;
-    let _ = create_dir(&cgroup_dir());
+    let cgroup = cgroup_dir();
+    let _ = create_dir(&cgroup);
+
+    if cgroup.exists() {
+        let _ = std::fs::write(cgroup.join("cgroup.subtree_control"), format!("+cpu +memory +pids")).ok();
+    }
 
     Ok(())
 }
