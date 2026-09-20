@@ -167,7 +167,8 @@ fn create_sandbox(
             mounts: &mounts,
             console: console.take_slave()?,
         };
-        cfg.cgroup = CGroup::create(&cfg);
+        let cgroup = CGroup::create(&cfg);
+        cfg.cgroup = cgroup.as_ref();
         let mut vm = hypervisor.boot(cfg)?;
         match console.read_until_terminated()? {
             ConsoleExit::GuestGone => {

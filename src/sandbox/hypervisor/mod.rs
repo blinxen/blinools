@@ -22,7 +22,7 @@ use crate::sandbox::name::Name;
 
 pub struct VmConfig<'sandbox> {
     pub name: &'sandbox Name,
-    pub cgroup: Option<CGroup>,
+    pub cgroup: Option<&'sandbox CGroup>,
     pub kernel: &'sandbox Path,
     pub rootfs: &'sandbox Path,
     pub rootfs_type: &'sandbox RootfsType,

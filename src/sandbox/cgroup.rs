@@ -13,13 +13,14 @@ pub struct CGroup {
 
 impl CGroup {
     pub fn create(cfg: &VmConfig) -> Option<Self> {
-        let path = cgroup_dir(cfg.name.as_str());
+        let base = maybe_init_base_group()?;
+        let path = base.join(cfg.name.as_str());
         if create_dir(&path).is_err() {
             log::warn!("could not create cgroup");
             return None;
         }
         std::fs::write(
-            path.join("cgroup.subtree_control"),
+            base.join("cgroup.subtree_control"),
             String::from("+cpu +memory +pids"),
         )
         .ok()?;
@@ -51,18 +52,22 @@ impl CGroup {
     }
 }
 
+fn maybe_init_base_group() -> Option<PathBuf> {
+    let uid = unsafe { libc::getuid() };
+    let path = PathBuf::from(&format!(
+        "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/blinools.slice",
+        uid = uid
+    ));
+
+    create_dir(&path).ok()?;
+
+    Some(path)
+}
+
 impl Drop for CGroup {
     fn drop(&mut self) {
         if self.path.exists() {
             let _ = fs::remove_dir(&self.path);
         }
     }
-}
-
-fn cgroup_dir(name: &str) -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(&format!(
-        "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/blinools.slice/{name}",
-        uid = uid
-    ))
 }
