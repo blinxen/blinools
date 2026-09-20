@@ -1,6 +1,6 @@
 # Changelog for `blinools`
 
-## UNRELEASED
+## 0.2.0
 
 * Introduce new `prune` command
 * Support forcefully shutting down a sandbox
