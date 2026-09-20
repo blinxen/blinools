@@ -21,7 +21,7 @@ use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 use tabled::{Table, Tabled};
 
 use crate::{
-    config::{cgroup_dir, create_dir, runtime_dir, state_dir},
+    config::{create_dir, runtime_dir, state_dir},
     sandbox::{
         cgroup::CGroup,
         config::FsShare,
@@ -131,7 +131,7 @@ fn create_sandbox(
     if let Some(name) = name {
         config.name = name;
     }
-    ensure_unique_name(Some(&config), &config.name)?;
+    ensure_unique_sandbox_name(Some(&config), &config.name)?;
     let hypervisor = hypervisor::new(Some(&config));
     let lock = SandboxLock::try_acquire(&config.name)?
         .context("failed to acquire lock, a sandbox with the same name is already running")?;
@@ -139,8 +139,6 @@ fn create_sandbox(
     create_dir(&runtime_dir().join(&config.name))
         .context("creating runtime directory for sandbox")?;
     create_dir(&state_dir()?.join(&config.name)).context("creating state directory for sandbox")?;
-    let cgroup = cgroup_dir().join(&config.name);
-    let _ = create_dir(&cgroup);
     let shares = config::merge_by_name(config.shares.as_ref(), shares);
     validate_socket_path_lengths(&config.name, &shares)?;
 
@@ -169,7 +167,7 @@ fn create_sandbox(
             mounts: &mounts,
             console: console.take_slave()?,
         };
-        cfg.cgroup = CGroup::create(&cgroup, &cfg);
+        cfg.cgroup = CGroup::create(&cfg);
         let mut vm = hypervisor.boot(cfg)?;
         match console.read_until_terminated()? {
             ConsoleExit::GuestGone => {
@@ -273,7 +271,7 @@ fn prune_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error>
     Ok(())
 }
 
-fn ensure_unique_name(config: Option<&config::Config>, name: &Name) -> Result<(), anyhow::Error> {
+fn ensure_unique_sandbox_name(config: Option<&config::Config>, name: &Name) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(name);
     if hypervisor::for_sandbox(config, &sandbox_runtime_dir).is_running(&sandbox_runtime_dir) {
         return Err(anyhow::anyhow!(

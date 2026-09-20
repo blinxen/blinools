@@ -1,9 +1,9 @@
 use std::fs;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::config::create_dir;
 use crate::sandbox::hypervisor::VmConfig;
 
 #[derive(Debug)]
@@ -12,26 +12,28 @@ pub struct CGroup {
 }
 
 impl CGroup {
-    pub fn create(cgroup: &Path, cfg: &VmConfig) -> Option<Self> {
-        if !cgroup.exists() {
+    pub fn create(cfg: &VmConfig) -> Option<Self> {
+        let path = cgroup_dir(cfg.name.as_str());
+        if create_dir(&path).is_err() {
             log::warn!("could not create cgroup");
             return None;
         }
+        std::fs::write(path.join("cgroup.subtree_control"), format!("+cpu +memory +pids")).ok()?;
         // cpu
         // matches the kernel default (100ms)
         let cpu_period = 100_000u64;
         let cpu_quota = (cpu_period as f64 * cfg.cpus) as u64;
-        fs::write(cgroup.join("cpu.max"), format!("{cpu_quota} {cpu_period}")).ok()?;
+        fs::write(path.join("cpu.max"), format!("{cpu_quota} {cpu_period}")).ok()?;
         // memory
         // 256MB overhead for qemu etc.
         let memory_bytes = cfg.memory_mb * 1024 * 1024 + (256 * 1024 * 1024);
-        fs::write(cgroup.join("memory.max"), memory_bytes.to_string()).ok()?;
-        fs::write(cgroup.join("memory.swap.max"), "0").ok()?;
+        fs::write(path.join("memory.max"), memory_bytes.to_string()).ok()?;
+        fs::write(path.join("memory.swap.max"), "0").ok()?;
         // pids
-        fs::write(cgroup.join("pids.max"), "1024").ok()?;
+        fs::write(path.join("pids.max"), "1024").ok()?;
 
         Some(Self {
-            path: cgroup.to_path_buf(),
+            path
         })
     }
 
@@ -53,4 +55,12 @@ impl Drop for CGroup {
             let _ = fs::remove_dir(&self.path);
         }
     }
+}
+
+fn cgroup_dir(name: &str) -> PathBuf {
+    let uid = unsafe { libc::getuid() };
+    PathBuf::from(&format!(
+        "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/blinools.slice/{name}",
+        uid = uid
+    ))
 }

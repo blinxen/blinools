@@ -38,14 +38,6 @@ pub fn state_dir() -> Result<PathBuf, anyhow::Error> {
         .join("blinools"))
 }
 
-pub fn cgroup_dir() -> PathBuf {
-    let uid = unsafe { libc::getuid() };
-    PathBuf::from(&format!(
-        "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service/blinools.slice",
-        uid = uid
-    ))
-}
-
 fn config_dir() -> Option<PathBuf> {
     std::env::var_os("XDG_CONFIG_HOME")
         .filter(|v| !v.is_empty())
@@ -57,12 +49,6 @@ fn config_dir() -> Option<PathBuf> {
 pub fn setup_dirs() -> Result<(), anyhow::Error> {
     create_dir(&runtime_dir()).context("creating runtime directory")?;
     create_dir(&state_dir()?).context("creating state directory")?;
-    let cgroup = cgroup_dir();
-    let _ = create_dir(&cgroup);
-
-    if cgroup.exists() {
-        let _ = std::fs::write(cgroup.join("cgroup.subtree_control"), format!("+cpu +memory +pids")).ok();
-    }
 
     Ok(())
 }
