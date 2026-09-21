@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 
+use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{Config, FsShare};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{
@@ -26,7 +27,11 @@ pub struct FsMount {
 }
 
 impl FsMount {
-    pub fn spawn(config: &Config, share: &FsShare) -> Result<Self, anyhow::Error> {
+    pub fn spawn(
+        config: &Config,
+        share: &FsShare,
+        cgroup: Option<&CGroup>,
+    ) -> Result<Self, anyhow::Error> {
         let socket_path = socket_path(&config.name, &format!("vfsd-{}", share.name));
         remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("virtiofsd");
@@ -70,6 +75,9 @@ impl FsMount {
             ));
         if share.read_only {
             cmd.arg("--readonly");
+        }
+        if let Some(cgroup) = cgroup {
+            cgroup.enter(&mut cmd);
         }
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::null());

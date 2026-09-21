@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Context;
 
-use crate::sandbox::config::Config;
+use crate::sandbox::{cgroup::CGroup, config::Config};
 use crate::sandbox::{
     process::{die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket},
     socket_path,
@@ -20,7 +20,7 @@ pub struct PasstNetwork {
 }
 
 impl PasstNetwork {
-    pub fn new(config: &Config) -> Result<PasstNetwork, anyhow::Error> {
+    pub fn new(config: &Config, cgroup: Option<&CGroup>) -> Result<PasstNetwork, anyhow::Error> {
         let socket_path = socket_path(&config.name, "passt");
         remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("passt");
@@ -77,6 +77,9 @@ impl PasstNetwork {
         }
 
         die_with_parent(&mut cmd);
+        if let Some(cgroup) = cgroup {
+            cgroup.enter(&mut cmd);
+        }
 
         log::debug!("Starting command: {:?}", cmd);
         let mut handle = cmd.spawn().context("spawing passt")?;

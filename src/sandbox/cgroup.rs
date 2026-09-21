@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::config::create_dir;
-use crate::sandbox::hypervisor::VmConfig;
 
 #[derive(Debug)]
 pub struct CGroup {
@@ -12,9 +11,9 @@ pub struct CGroup {
 }
 
 impl CGroup {
-    pub fn create(cfg: &VmConfig) -> Option<Self> {
+    pub fn create(name: &str, cpus: f64, memory_mb: u64) -> Option<Self> {
         let base = maybe_init_base_group()?;
-        let path = base.join(cfg.name.as_str());
+        let path = base.join(name);
         if create_dir(&path).is_err() {
             log::warn!("could not create cgroup");
             return None;
@@ -27,11 +26,11 @@ impl CGroup {
         // cpu
         // matches the kernel default (100ms)
         let cpu_period = 100_000u64;
-        let cpu_quota = (cpu_period as f64 * cfg.cpus) as u64;
+        let cpu_quota = (cpu_period as f64 * cpus) as u64;
         fs::write(path.join("cpu.max"), format!("{cpu_quota} {cpu_period}")).ok()?;
         // memory
         // 256MB overhead for qemu etc.
-        let memory_bytes = cfg.memory_mb * 1024 * 1024 + (256 * 1024 * 1024);
+        let memory_bytes = memory_mb * 1024 * 1024 + (256 * 1024 * 1024);
         fs::write(path.join("memory.max"), memory_bytes.to_string()).ok()?;
         fs::write(path.join("memory.swap.max"), "0").ok()?;
         // pids

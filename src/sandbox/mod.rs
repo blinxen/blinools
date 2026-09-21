@@ -143,19 +143,20 @@ fn create_sandbox(
     validate_socket_path_lengths(&config.name, &shares)?;
 
     {
+        let cgroup = CGroup::create(config.name.as_str(), config.cpus as f64, config.memory_mb);
         let mut passt_network = None;
         if config.network == config::Network::Lan {
-            passt_network = Some(passt::PasstNetwork::new(&config)?);
+            passt_network = Some(passt::PasstNetwork::new(&config, cgroup.as_ref())?);
         }
         let mut mounts = Vec::new();
         for share in &shares {
-            mounts.push(FsMount::spawn(&config, share)?);
+            mounts.push(FsMount::spawn(&config, share, cgroup.as_ref())?);
         }
 
         let mut console = Console::new()?;
-        let mut cfg = VmConfig {
+        let cfg = VmConfig {
             name: &config.name,
-            cgroup: None,
+            cgroup: cgroup.as_ref(),
             kernel: &config.kernel,
             rootfs: &config.rootfs,
             rootfs_type: &config.rootfs_type,
@@ -167,8 +168,6 @@ fn create_sandbox(
             mounts: &mounts,
             console: console.take_slave()?,
         };
-        let cgroup = CGroup::create(&cfg);
-        cfg.cgroup = cgroup.as_ref();
         let mut vm = hypervisor.boot(cfg)?;
         match console.read_until_terminated()? {
             ConsoleExit::GuestGone => {
