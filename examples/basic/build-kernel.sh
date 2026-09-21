@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VERSION="7.2.6"
+VERSION="7.2.7"
 
 TARBALL="linux-${VERSION}.tar.xz"
 SRC_DIR="linux-${VERSION}"
