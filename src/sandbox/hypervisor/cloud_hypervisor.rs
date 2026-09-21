@@ -60,6 +60,8 @@ impl Hypervisor for CloudHypervisor {
             .arg(api_socket.with_extension("log"))
             .arg("--kernel")
             .arg(cfg.kernel)
+            .arg("--seccomp")
+            .arg("true")
             .arg("--landlock")
             .arg("--landlock-rules")
             .arg(format!("path={},access=r", cfg.rootfs.display()))

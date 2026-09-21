@@ -45,6 +45,8 @@ impl FsMount {
             .arg("namespace")
             .arg("--cache")
             .arg("never")
+            .arg("--seccomp")
+            .arg("kill")
             .arg("--tag")
             .arg(share.name.as_str())
             // Looks like weird mappings but this way we make sure the guest cannot set weird UID /
