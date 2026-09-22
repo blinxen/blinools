@@ -16,7 +16,6 @@ const ALLOWED_PRIVATE_MODES: &[u16] = &[
 ];
 
 pub struct AnsiFilter {
-    // TODO: Do we need to limit the parser buffer?
     parser: Parser,
     // Track sequence to prevent blocking too much here
     current_string_sequence_length: usize,

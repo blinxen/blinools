@@ -53,7 +53,6 @@ impl Name {
     }
 
     fn is_allowed(character: char) -> bool {
-        // TODO: Do we need to support more?
         character.is_ascii_alphanumeric() || character == '-' || character == '_'
     }
 }

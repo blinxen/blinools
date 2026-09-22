@@ -32,7 +32,6 @@ pub struct ConsoleIo {
 
 // The idea here is that we attach to the sandbox pty and filter problematic
 // escape characters
-// TODO: Store termio settings and reapply after exit
 pub struct Console {
     master: OwnedFd,
     slave: Option<OwnedFd>,
@@ -173,7 +172,6 @@ impl Console {
                 libc::ppoll(
                     poll_fds.as_mut_ptr(),
                     poll_fds.len() as libc::nfds_t,
-                    // TODO: Do we need a timeout? Probably not
                     std::ptr::null(),
                     &original_mask,
                 )
