@@ -79,57 +79,48 @@ share of the same name entirely.
 
 Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blinools-sandbox) command:
 
-| Key | Type | Required | Default | Notes |
+| Key | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `name` | string | No | The current directory's name, or a random 16 character name if that does not work | Overridden by the `[NAME]` argument to `sandbox create`. |
-| `kernel` | path | **Yes** | - | - |
-| `kernel_cmdline` | string | No | `""` | Must not contain `console=` or `root=` (already set for you, see [How it works](#how-it-works)) |
-| `rootfs` | path | **Yes** | - | Treated as a read-only base image |
-| `rootfs_type` | `"Raw"` \| `"QCOW2"` | No | `"Raw"` | Format of the file at `rootfs` |
+| `name` | string | No | The name of the current directory, or a random 16 character name if that does not work | Overridden by the `[NAME]` argument passed to `sandbox create`. |
+| `kernel` | path | **Yes** | - | Path to a Linux Kernel that should be used for the sandbox. |
+| `hypervisor` | `"Qemu"` \| `"CloudHypervisor"` | No | `"Qemu"` | VMM to use to boot the sandbox with, see [Requirements](#requirements). |
+| `kernel_cmdline` | string | No | `""` | Kernel arguments to pass. Must not contain `console=` or `root=` (see [Architecture](docs/sandbox_architecture.md)). |
+| `rootfs` | path | **Yes** | - | Path to a root filesystem that should be used for the sandbox. This root filesystem is always treated as a read-only base. |
+| `rootfs_type` | `"Raw"` \| `"QCOW2"` | No | `"Raw"` | File format of `rootfs`. |
 | `network` | `"Lan"` \| `"None"` | No | `"Lan"` | Type of network to allow the sandbox to connect to. `Lan` means that sandbox is allowed to connect to the local area network and `None` means to deactivate networking completely (sandbox has no internet connectivity). |
-| `memory_mb` | integer | **Yes** | - | Accepted range is 512 – 131072 (0.5 – 128 GiB) |
-| `cpus` | integer | **Yes** | - | Accepted range is 1 – 255 |
-| `dns` | array of strings | No | - | DNS server IPs to use inside the guest |
-| `shares` | array of tables | No | - | Can also be set / overridden per-run with `--share`, see [`sandbox create`](#sandbox-create) |
-| `shares[].name` | string | **Yes** | - | Used as the guest mount point `/mnt/<name>`. |
-| `shares[].host_dir` | path | **Yes** | - | - |
-| `shares[].read_only` | bool | No | `false` | |
-| `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only |
-| `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty file or directory) |
-| `inherit_shares` | bool | No | `false` | Only relevant when there is a project configuration: when `true` the global `shares` are merged underneath the ones of the project file |
-| `guest_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [shares](#shares-and-file-ownership) |
-| `guest_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [ shares](#shares-and-file-ownership) |
-| `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | |
-| `passt.binary` | path | No | Resolved from `$PATH` as `passt` | |
-| `virtiofsd.binary` | path | No | Resolved from `$PATH` as `virtiofsd` | |
+| `memory_mb` | integer | **Yes** | - | How much memory in megabytes the sandbox should received in total. Accepted range is 512 – 131072 (0.5 – 128 GiB). |
+| `cpus` | integer | **Yes** | - | How many CPUs the sandbox is allowed to use. Accepted range is 1 – 255. |
+| `dns` | array of strings | No | - | DNS server IPs to use inside the sandbox. |
+| `shares` | array of tables | No | - | List of host directories to mount into the sandbox. Can also be set / overridden per-run with `--share`, see [`sandbox create`](#sandbox-create). |
+| `shares[].name` | string | **Yes** | - | Name of the share. It is used as the sandbox mount point `/mnt/<name>`. |
+| `shares[].host_dir` | path | **Yes** | - | Path to the host directory that should be shared. |
+| `shares[].read_only` | bool | No | `false` | Defines if the shared directory should be read-only or not. The diffrence between this field and the `read_only_paths` field is that here we are talking about the share as a whole. |
+| `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only. The diffrence between this field and the `read_only` field is that here we are talking about subpaths and not the whole share. |
+| `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty and read-only file or directory). |
+| `inherit_shares` | bool | No | `false` | Decides if the global `shares` are merged underneath the ones of the project file. Only relevant when there is a project configuration. |
+| `sandbox_user_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
+| `sandbox_user_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
+| `qemu.binary` | path | No | Resolved from `$PATH` as `qemu-system-x86_64` | Path to the qemu binary. Only used when `hypervisor` is `"Qemu"` (the default) |
+| `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | Path to the `CloudHypervisor` binary. Only used when `hypervisor` is `"CloudHypervisor"` |
+| `passt.binary` | path | No | Resolved from `$PATH` as `passt` | Path to the `passt` binary. |
+| `virtiofsd.binary` | path | No | Resolved from `$PATH` as `virtiofsd` | Path to the `virtiofsd` binary. |
 
 ```toml
 [sandbox]
-# Optional custom paths to the binary files
+hypervisor = "Qemu"
+qemu.binary = "/path/to/qemu-system-x86_64"
 cloud_hypervisor.binary = "/path/to/cloud-hypervisor"
 passt.binary = "/path/to/passt"
 virtiofsd.binary = "/path/to/virtiofsd"
-# Path to the kernel
 kernel = "/boot/vmlinuz-7.1.10-200.fc44.x86_64"
-# Kernel command line parameters to pass
-# "console" and "root" must not be configured here
-# They are hardcoded to "console=hvc0 root=/dev/vda" for now
 kernel_cmdline = "rw quiet"
-# Path to the rootfs
 rootfs = "./rootfs.img"
-# How much memory the VM should have in megabytes
 memory_mb = 8192
-# How many cores the VM should have
 cpus = 4
-# Optional list of DNS servers to use in the VM
 dns = ["192.168.1.1"]
-# Optional paths to automatically mount under /mnt when the VM is started
-# Can also be defined with the --share flag, see blinools sandbox create --help
 shares = [
     { name = "share-name", host_dir = "/path/to/a/directory", read_only = false },
 ]
-# Whether the shares of the global config file should be kept when this file is used as the
-# project configuration
 inherit_shares = false
 ```
 
@@ -166,7 +157,9 @@ An architectural overview can be found [here](docs/sandbox_architecture.md).
 
 ### Requirements
 
-- [Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) is used for creating microVMs.
+- A VMM to create microVMs. `hypervisor` in the config selects which one to use (see [Configuration reference](#configuration-reference)):
+  - [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`)
+  - [Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
 - [passt](https://passt.top) is used to enable networking.
 - [virtiofsd](https://gitlab.com/virtio-fs/virtiofsd) is used for sharing directories with the microVM.
 - Hardware virtualization (KVM) enabled, with access to `/dev/kvm` (e.g. your user is a member of the `kvm` group).
@@ -175,10 +168,10 @@ Fedora:
 
 ```bash
 # virtiofsd is installed under /usr/libexec by default, I recommend configuring "virtiofsd.binary" in the config file.
-sudo dnf install passt virtiofsd
+sudo dnf install qemu-system-x86 passt virtiofsd
 ```
 
-Cloud Hypervisor is not packaged in most distributions, you can either
+Cloud Hypervisor is not packaged in most distributions, you can either:
 [download a pre-built binary](https://www.cloudhypervisor.org/docs/prologue/quick-start/#use-pre-built-binaries)
 or
 [build it from source](https://www.cloudhypervisor.org/docs/prologue/quick-start/#building-from-source).
@@ -189,9 +182,8 @@ To create a sandbox, you will need a compiled Linux kernel and a rootfs.
 You don't *have* to actually compile your own kernel, you can just use whatever
 your distro provides. The example configuration below uses the official Fedora 44 kernel.
 The rootfs can also be easily created using `podman` (or `docker`).
-Check out the [examples](./examples) directory. The example builds a minimal Fedora
-kernel + rootfs pair with `examples/basic/Dockerfile` and
-`examples/basic/build-rootfs.sh`.
+Check out the [examples](./examples) directory.
+The example builds a minimal Fedora kernel + rootfs pair.
 
 The next steps assume you already have a compiled Linux kernel and a built rootfs.
 See [Configuration reference](#configuration-reference) below for the full list of options.
@@ -312,5 +304,5 @@ blinools sandbox prune
 
 ## License
 
-The source code is primarily distributed under the terms of the MIT License.
+The source code is distributed under the terms of the GNU General Public License v3.0 (or later).
 See LICENSE for details.
