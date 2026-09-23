@@ -386,6 +386,7 @@ mod tests {
             read_only: false,
             read_only_paths: Vec::new(),
             hidden_paths: Vec::new(),
+            git_action: None,
         }
     }
 

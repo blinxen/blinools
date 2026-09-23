@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::Context;
 
 use crate::sandbox::cgroup::CGroup;
-use crate::sandbox::config::{Config, FsShare};
+use crate::sandbox::config::{Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{
     die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket,
@@ -108,7 +108,8 @@ impl FsMount {
 
         unsafe {
             let s = share.clone();
-            cmd.pre_exec(move || isolate_share(&s));
+            let a = config.git_action.clone();
+            cmd.pre_exec(move || isolate_share(&s, &a));
         }
 
         log::debug!("Starting command: {:?}", cmd);
@@ -135,7 +136,7 @@ impl Drop for FsMount {
 
 // Create a user and mount namespace to hide / mark subpaths as read_only
 // virtiofsd does pivot_namespace so we don't have to
-fn isolate_share(share: &FsShare) -> Result<(), std::io::Error> {
+fn isolate_share(share: &FsShare, git_action: &GitAction) -> Result<(), std::io::Error> {
     let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
     unsafe {
         // TODO: Think of a way to also create PID namespace
@@ -166,7 +167,38 @@ fn isolate_share(share: &FsShare) -> Result<(), std::io::Error> {
         }
     }
 
+    match share.git_action {
+        Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+        Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+        Some(GitAction::None) => {}
+        None => match git_action {
+            GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+            GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+            GitAction::None => {}
+        },
+    }
+
     Ok(())
+}
+
+fn lookup_git_dirs_and_apply_action(path: &Path, hide: bool) {
+    walkdir::WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name() == ".git")
+        .for_each(|entry| {
+            let p = entry.path();
+            if hide {
+                if p.is_file() {
+                    let _ = hide_file(p);
+                } else {
+                    let _ = hide_dir(p);
+                }
+            } else {
+                let _ = mount_read_only(p, p);
+            }
+        });
 }
 
 fn hide_dir(path: &Path) -> std::io::Result<()> {

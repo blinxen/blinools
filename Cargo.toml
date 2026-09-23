@@ -22,6 +22,7 @@ tabled = { version = "0.22", default-features = false, features = ["derive"] }
 unicode-general-category = { version = "1", default-features = false }
 vte = { version = "0.15", default-features = false }
 wait-timeout = "0.2"
+walkdir = "2.5.0"
 
 [dev-dependencies]
 tempfile = "3"

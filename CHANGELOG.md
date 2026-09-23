@@ -1,5 +1,9 @@
 # Changelog for `blinools`
 
+## UNRELEASED
+
+* Introduce the concept of `git_action`s which defines how `.git` directories or files get mounted for shares.
+
 ## 0.2.0
 
 * Introduce new `prune` command

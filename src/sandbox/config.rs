@@ -32,6 +32,15 @@ pub enum Network {
     Lan,
 }
 
+#[derive(Debug, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields)]
+pub enum GitAction {
+    None,
+    #[default]
+    ReadOnly,
+    Hide,
+}
+
 impl fmt::Display for RootfsType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -82,6 +91,9 @@ pub struct Config {
     pub sandbox_user_gid: u32,
     #[garde(inner(inner(ip)))]
     pub dns: Option<Vec<String>>,
+    #[serde(default)]
+    #[garde(skip)]
+    pub git_action: GitAction,
     #[garde(dive)]
     pub cloud_hypervisor: Option<BinaryConfig>,
     #[garde(dive)]
@@ -110,6 +122,7 @@ pub struct FsShare {
     // Same as the read only paths but here we actually make the paths hidden so the sandbox
     // can't see
     pub hidden_paths: Vec<PathBuf>,
+    pub git_action: Option<GitAction>,
 }
 
 impl garde::Validate for FsShare {
@@ -285,6 +298,7 @@ pub fn parse_share(s: &str) -> Result<FsShare, String> {
         read_only,
         read_only_paths: Vec::new(),
         hidden_paths: Vec::new(),
+        git_action: None,
     };
     share.validate().map_err(|e| e.to_string())?;
     Ok(share)
@@ -304,6 +318,7 @@ mod tests {
             read_only,
             read_only_paths: Vec::new(),
             hidden_paths: Vec::new(),
+            git_action: None,
         }
     }
 
@@ -318,6 +333,7 @@ mod tests {
             read_only: false,
             read_only_paths,
             hidden_paths,
+            git_action: None,
         }
     }
 

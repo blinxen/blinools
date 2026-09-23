@@ -91,12 +91,14 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `memory_mb` | integer | **Yes** | - | How much memory in megabytes the sandbox should received in total. Accepted range is 512 – 131072 (0.5 – 128 GiB). |
 | `cpus` | integer | **Yes** | - | How many CPUs the sandbox is allowed to use. Accepted range is 1 – 255. |
 | `dns` | array of strings | No | - | DNS server IPs to use inside the sandbox. |
+| `git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Defines the action to take when encountering `.git` directories (repositories) or files (`worktrees`) when mounting a share. |
 | `shares` | array of tables | No | - | List of host directories to mount into the sandbox. Can also be set / overridden per-run with `--share`, see [`sandbox create`](#sandbox-create). |
 | `shares[].name` | string | **Yes** | - | Name of the share. It is used as the sandbox mount point `/mnt/<name>`. |
 | `shares[].host_dir` | path | **Yes** | - | Path to the host directory that should be shared. |
 | `shares[].read_only` | bool | No | `false` | Defines if the shared directory should be read-only or not. The diffrence between this field and the `read_only_paths` field is that here we are talking about the share as a whole. |
 | `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only. The diffrence between this field and the `read_only` field is that here we are talking about subpaths and not the whole share. |
 | `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty and read-only file or directory). |
+| `shares[].git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Overrides the global `git_action` action for this share. |
 | `inherit_shares` | bool | No | `false` | Decides if the global `shares` are merged underneath the ones of the project file. Only relevant when there is a project configuration. |
 | `sandbox_user_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
 | `sandbox_user_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
