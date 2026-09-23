@@ -76,9 +76,6 @@ impl FsMount {
         if share.read_only {
             cmd.arg("--readonly");
         }
-        if let Some(cgroup) = cgroup {
-            cgroup.enter(&mut cmd);
-        }
         cmd.stdin(Stdio::null());
         cmd.stdout(Stdio::null());
 
@@ -105,6 +102,9 @@ impl FsMount {
         };
 
         die_with_parent(&mut cmd);
+        if let Some(cgroup) = cgroup {
+            cgroup.enter(&mut cmd);
+        }
 
         unsafe {
             let s = share.clone();
