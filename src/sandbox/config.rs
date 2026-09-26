@@ -125,6 +125,13 @@ pub struct FsShare {
     pub git_action: Option<GitAction>,
 }
 
+#[derive(Clone, Debug)]
+pub struct CliOverrides {
+    pub read_only: bool,
+    pub no_hidden: bool,
+    pub hidden_as_read_only: bool,
+}
+
 impl garde::Validate for FsShare {
     type Context = ();
 

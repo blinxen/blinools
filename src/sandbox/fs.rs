@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::Context;
 
 use crate::sandbox::cgroup::CGroup;
-use crate::sandbox::config::{Config, FsShare, GitAction};
+use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{
     die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket,
@@ -31,6 +31,7 @@ impl FsMount {
         config: &Config,
         share: &FsShare,
         cgroup: Option<&CGroup>,
+        overrides: &CliOverrides,
     ) -> Result<Self, anyhow::Error> {
         let socket_path = socket_path(&config.name, &format!("vfsd-{}", share.name));
         remove_stale_socket(&socket_path);
@@ -109,7 +110,8 @@ impl FsMount {
         unsafe {
             let s = share.clone();
             let a = config.git_action.clone();
-            cmd.pre_exec(move || isolate_share(&s, &a));
+            let c = overrides.clone();
+            cmd.pre_exec(move || isolate_share(&s, &a, &c));
         }
 
         log::debug!("Starting command: {:?}", cmd);
@@ -136,7 +138,11 @@ impl Drop for FsMount {
 
 // Create a user and mount namespace to hide / mark subpaths as read_only
 // virtiofsd does pivot_namespace so we don't have to
-fn isolate_share(share: &FsShare, git_action: &GitAction) -> Result<(), std::io::Error> {
+fn isolate_share(
+    share: &FsShare,
+    git_action: &GitAction,
+    overrides: &CliOverrides,
+) -> Result<(), std::io::Error> {
     let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
     unsafe {
         // TODO: Think of a way to also create PID namespace
@@ -151,7 +157,7 @@ fn isolate_share(share: &FsShare, git_action: &GitAction) -> Result<(), std::io:
     // Make sure mounts don't leak outside
     mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
 
-    if share.read_only {
+    if share.read_only || overrides.read_only {
         mount_read_only(&share.host_dir, &share.host_dir)?;
     } else {
         for path in &share.read_only_paths {
@@ -159,11 +165,17 @@ fn isolate_share(share: &FsShare, git_action: &GitAction) -> Result<(), std::io:
         }
     }
 
-    for path in &share.hidden_paths {
-        if std::fs::symlink_metadata(path)?.is_dir() {
-            hide_dir(path)?;
-        } else {
-            hide_file(path)?;
+    if !overrides.no_hidden {
+        for path in &share.hidden_paths {
+            if overrides.hidden_as_read_only {
+                mount_read_only(path, path)?;
+                continue;
+            }
+            if std::fs::symlink_metadata(path)?.is_dir() {
+                hide_dir(path)?;
+            } else {
+                hide_file(path)?;
+            }
         }
     }
 

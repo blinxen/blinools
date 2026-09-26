@@ -24,7 +24,7 @@ use crate::{
     config::{create_dir, runtime_dir, state_dir},
     sandbox::{
         cgroup::CGroup,
-        config::FsShare,
+        config::{CliOverrides, FsShare},
         console::{Console, ConsoleExit},
         fs::FsMount,
         hypervisor::VmConfig,
@@ -63,6 +63,15 @@ pub enum Command {
         /// When set then the sandbox will be deleted once it is shutdown
         #[arg(long = "delete-after-shutdown", default_value_t = false)]
         delete_after_shutdown: bool,
+        /// When set, all shares are mounted read-only, overriding any other configuration.
+        #[arg(long = "read-only", default_value_t = false)]
+        read_only: bool,
+        /// When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-write.
+        #[arg(long = "no-hidden", default_value_t = false)]
+        no_hidden: bool,
+        /// When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-only.
+        #[arg(long = "hidden-as-read-only", default_value_t = false)]
+        hidden_as_read_only: bool,
     },
     /// Gracefully shutdown a sandbox
     Shutdown {
@@ -98,6 +107,9 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
             name,
             recreate,
             delete_after_shutdown,
+            read_only,
+            no_hidden,
+            hidden_as_read_only,
         } => {
             create_sandbox(
                 config.context("the configuration has no `sandbox` section")?,
@@ -105,6 +117,11 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
                 name,
                 recreate,
                 delete_after_shutdown,
+                CliOverrides {
+                    read_only,
+                    no_hidden,
+                    hidden_as_read_only,
+                },
             )?;
         }
         Command::Shutdown { name, force } => {
@@ -127,6 +144,7 @@ fn create_sandbox(
     name: Option<Name>,
     recreate: bool,
     delete_after_shutdown: bool,
+    overrides: CliOverrides,
 ) -> Result<(), anyhow::Error> {
     if let Some(name) = name {
         config.name = name;
@@ -150,7 +168,7 @@ fn create_sandbox(
         }
         let mut mounts = Vec::new();
         for share in &shares {
-            mounts.push(FsMount::spawn(&config, share, cgroup.as_ref())?);
+            mounts.push(FsMount::spawn(&config, share, cgroup.as_ref(), &overrides)?);
         }
 
         let mut console = Console::new()?;

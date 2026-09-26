@@ -248,6 +248,9 @@ blinools sandbox create [NAME] [-s|--share <SHARE>]... [--recreate] [--delete-af
 | `-s, --share <SHARE>` | none | Mount a host directory into the guest. Repeatable. See [share syntax](#share-syntax) below. Merges with (and overrides, by name) the `shares` list in the config file. |
 | `--recreate` | `false` | Reset the sandbox back to a clean state, wiping any changes made to the rootfs. |
 | `--delete-after-shutdown` | `false` | Automatically run the equivalent of `sandbox delete --force` once the guest shuts down. |
+| `--read-only` | `false` | When set, all shares are mounted read-only, overriding any other configuration. |
+| `--no-hidden` | `false` | When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-write. |
+| `--hidden-as-read-only` | `false` | When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-only. |
 
 #### Share syntax
 
