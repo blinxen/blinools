@@ -80,6 +80,9 @@ impl PasstNetwork {
         if let Some(cgroup) = cgroup {
             cgroup.enter(&mut cmd);
         }
+        // TODO: This can't be done at the moment since we don't have pasta yet
+        // uncomment after paste integration
+        // unshare(&mut cmd);
 
         log::debug!("Starting command: {:?}", cmd);
         let mut handle = cmd.spawn().context("spawing passt")?;

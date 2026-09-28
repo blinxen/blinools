@@ -12,7 +12,7 @@ use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, wait_for_socket,
+    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare, wait_for_socket,
 };
 use crate::sandbox::socket_path;
 
@@ -106,13 +106,8 @@ impl FsMount {
         if let Some(cgroup) = cgroup {
             cgroup.enter(&mut cmd);
         }
-
-        unsafe {
-            let s = share.clone();
-            let a = config.git_action.clone();
-            let c = overrides.clone();
-            cmd.pre_exec(move || isolate_share(&s, &a, &c));
-        }
+        unshare(&mut cmd);
+        isolate_share(&mut cmd, share.clone(), config.git_action.clone(), overrides.clone());
 
         log::debug!("Starting command: {:?}", cmd);
         let mut child = cmd.spawn().context("spawning virtiofsd")?;
@@ -139,58 +134,52 @@ impl Drop for FsMount {
 // Create a user and mount namespace to hide / mark subpaths as read_only
 // virtiofsd does pivot_namespace so we don't have to
 fn isolate_share(
-    share: &FsShare,
-    git_action: &GitAction,
-    overrides: &CliOverrides,
-) -> Result<(), std::io::Error> {
-    let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+    command: &mut Command,
+    share: FsShare,
+    git_action: GitAction,
+    overrides: CliOverrides,
+) {
     unsafe {
-        // TODO: Think of a way to also create PID namespace
-        if libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS | libc::CLONE_NEWNET) != 0 {
-            Err(std::io::Error::last_os_error())?;
-        }
-    };
-    std::fs::write("/proc/self/setgroups", "deny")?;
-    std::fs::write("/proc/self/uid_map", format!("0 {} 1", uid))?;
-    std::fs::write("/proc/self/gid_map", format!("0 {} 1", gid))?;
+        command.pre_exec(move || {
+            // Make sure mounts don't leak outside
+            mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
 
-    // Make sure mounts don't leak outside
-    mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
-
-    if share.read_only || overrides.read_only {
-        mount_read_only(&share.host_dir, &share.host_dir)?;
-    } else {
-        for path in &share.read_only_paths {
-            mount_read_only(path, path)?;
-        }
-    }
-
-    if !overrides.no_hidden {
-        for path in &share.hidden_paths {
-            if overrides.hidden_as_read_only {
-                mount_read_only(path, path)?;
-                continue;
-            }
-            if std::fs::symlink_metadata(path)?.is_dir() {
-                hide_dir(path)?;
+            if share.read_only || overrides.read_only {
+                mount_read_only(&share.host_dir, &share.host_dir)?;
             } else {
-                hide_file(path)?;
+                for path in &share.read_only_paths {
+                    mount_read_only(path, path)?;
+                }
             }
-        }
-    }
 
-    match share.git_action {
-        Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
-        Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-        Some(GitAction::None) => {}
-        None => match git_action {
-            GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
-            GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-            GitAction::None => {}
-        },
-    }
+            if !overrides.no_hidden {
+                for path in &share.hidden_paths {
+                    if overrides.hidden_as_read_only {
+                        mount_read_only(path, path)?;
+                        continue;
+                    }
+                    if std::fs::symlink_metadata(path)?.is_dir() {
+                        hide_dir(path)?;
+                    } else {
+                        hide_file(path)?;
+                    }
+                }
+            }
 
-    Ok(())
+            match share.git_action {
+                Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+                Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+                Some(GitAction::None) => {}
+                None => match git_action {
+                    GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+                    GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+                    GitAction::None => {}
+                },
+            }
+
+            Ok(())
+        });
+    }
 }
 
 fn lookup_git_dirs_and_apply_action(path: &Path, hide: bool) {

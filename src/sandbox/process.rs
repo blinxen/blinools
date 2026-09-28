@@ -74,3 +74,18 @@ pub fn kill_child_and_cleanup(child: &mut Child, files_to_remove: &[&Path]) {
         let _ = std::fs::remove_file(file);
     }
 }
+
+pub fn unshare(command: &mut Command) {
+    unsafe {
+        command.pre_exec(|| {
+            let (uid, gid) = (libc::getuid(), libc::getgid());
+            if libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS | libc::CLONE_NEWNET) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            std::fs::write("/proc/self/setgroups", "deny")?;
+            std::fs::write("/proc/self/uid_map", format!("0 {uid} 1"))?;
+            std::fs::write("/proc/self/gid_map", format!("0 {gid} 1"))?;
+            Ok(())
+        });
+    }
+}
