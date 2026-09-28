@@ -76,6 +76,7 @@ pub fn kill_child_and_cleanup(child: &mut Child, files_to_remove: &[&Path]) {
 }
 
 pub fn unshare(command: &mut Command) {
+    // TODO: This needs to do a lot more for sandboxing
     unsafe {
         command.pre_exec(|| {
             let (uid, gid) = (libc::getuid(), libc::getgid());
