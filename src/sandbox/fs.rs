@@ -107,7 +107,12 @@ impl FsMount {
             cgroup.enter(&mut cmd);
         }
         unshare(&mut cmd);
-        isolate_share(&mut cmd, share.clone(), config.git_action.clone(), overrides.clone());
+        isolate_share(
+            &mut cmd,
+            share.clone(),
+            config.git_action.clone(),
+            overrides.clone(),
+        );
 
         log::debug!("Starting command: {:?}", cmd);
         let mut child = cmd.spawn().context("spawning virtiofsd")?;
@@ -167,7 +172,9 @@ fn isolate_share(
             }
 
             match share.git_action {
-                Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+                Some(GitAction::ReadOnly) => {
+                    lookup_git_dirs_and_apply_action(&share.host_dir, false)
+                }
                 Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
                 Some(GitAction::None) => {}
                 None => match git_action {
