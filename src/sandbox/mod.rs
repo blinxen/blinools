@@ -2,7 +2,7 @@ mod cgroup;
 mod console;
 mod fs;
 mod lock;
-mod passt;
+mod network;
 mod process;
 
 pub mod config;
@@ -162,9 +162,9 @@ fn create_sandbox(
 
     {
         let cgroup = CGroup::create(config.name.as_str(), config.cpus as f64, config.memory_mb);
-        let mut passt_network = None;
+        let mut network = None;
         if config.network == config::Network::Lan {
-            passt_network = Some(passt::PasstNetwork::new(&config, cgroup.as_ref())?);
+            network = Some(network::create(&config, cgroup.as_ref())?);
         }
         let mut mounts = Vec::new();
         for share in &shares {
@@ -179,7 +179,7 @@ fn create_sandbox(
             rootfs: &config.rootfs,
             rootfs_type: &config.rootfs_type,
             reset_overlay: recreate,
-            network_socket: passt_network.as_ref().map(|p| p.socket_path()),
+            network_socket: network.as_ref().map(|p| p.socket_path()),
             cmdline: &config.kernel_cmdline,
             memory_mb: config.memory_mb,
             cpus: config.cpus as f64,

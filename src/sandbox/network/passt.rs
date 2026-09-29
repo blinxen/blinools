@@ -14,13 +14,13 @@ use crate::sandbox::{
 
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub struct PasstNetwork {
+pub struct Passt {
     handle: Child,
     socket_path: PathBuf,
 }
 
-impl PasstNetwork {
-    pub fn new(config: &Config, cgroup: Option<&CGroup>) -> Result<PasstNetwork, anyhow::Error> {
+impl Passt {
+    pub fn new(config: &Config, cgroup: Option<&CGroup>) -> Result<Passt, anyhow::Error> {
         let socket_path = socket_path(&config.name, "passt");
         remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("passt");
@@ -90,7 +90,7 @@ impl PasstNetwork {
             return Err(error).context("starting the sandbox network");
         }
 
-        Ok(PasstNetwork {
+        Ok(Passt {
             handle,
             socket_path,
         })
@@ -101,7 +101,7 @@ impl PasstNetwork {
     }
 }
 
-impl Drop for PasstNetwork {
+impl Drop for Passt {
     fn drop(&mut self) {
         kill_child_and_cleanup(&mut self.handle, &[&self.socket_path]);
     }
