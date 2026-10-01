@@ -86,6 +86,17 @@ pub fn unshare(command: &mut Command) {
             std::fs::write("/proc/self/setgroups", "deny")?;
             std::fs::write("/proc/self/uid_map", format!("0 {uid} 1"))?;
             std::fs::write("/proc/self/gid_map", format!("0 {gid} 1"))?;
+            // Make sure mounts don't leak outside
+            let res = libc::mount(
+                std::ptr::null(),
+                c"/".as_ptr(),
+                std::ptr::null(),
+                libc::MS_REC | libc::MS_PRIVATE,
+                std::ptr::null(),
+            );
+            if res != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             Ok(())
         });
     }

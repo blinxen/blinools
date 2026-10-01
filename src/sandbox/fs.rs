@@ -146,9 +146,6 @@ fn isolate_share(
 ) {
     unsafe {
         command.pre_exec(move || {
-            // Make sure mounts don't leak outside
-            mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
-
             if share.read_only || overrides.read_only {
                 mount_read_only(&share.host_dir, &share.host_dir)?;
             } else {
