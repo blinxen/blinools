@@ -1,0 +1,16 @@
+[Unit]
+Description=Bind mount /mnt/* into agent home
+ConditionPathIsDirectory=/mnt
+After=local-fs.target
+RequiresMountsFor=/mnt
+Before=systemd-user-sessions.service serial-getty@hvc0.service getty.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/agent-mounts
+ExecStart=/usr/local/bin/bind-agent-mounts.sh mount
+ExecStop=/usr/local/bin/bind-agent-mounts.sh umount
+
+[Install]
+WantedBy=multi-user.target

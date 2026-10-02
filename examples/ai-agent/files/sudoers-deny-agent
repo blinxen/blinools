@@ -1,0 +1,2 @@
+agent ALL=(ALL) !ALL
+agent ALL=(root) NOPASSWD: /usr/sbin/poweroff ""
