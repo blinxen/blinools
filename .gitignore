@@ -1,5 +1,6 @@
 /target
 *.img
 *.tar*
-linux-*/
 kernel
+linux-*/
+!linux-*.config
