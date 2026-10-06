@@ -12,7 +12,7 @@ use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
 use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare,
+    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare_command,
 };
 use crate::sandbox::{socket_path, socket_path_in};
 
@@ -149,7 +149,7 @@ impl Hypervisor for Qemu {
         if let Some(cgroup) = cfg.cgroup {
             cgroup.enter(&mut command);
         }
-        unshare(&mut command);
+        unshare_command(&mut command);
 
         command
             .stdin(cfg.console.stdin)
@@ -210,7 +210,7 @@ impl Vm for QemuVm {
     }
 
     fn terminate(&mut self) {
-        kill_child_and_cleanup(&mut self.handle, &[&self.socket_path]);
+        kill_child_and_cleanup(self.handle.id(), &[&self.socket_path]);
     }
 }
 

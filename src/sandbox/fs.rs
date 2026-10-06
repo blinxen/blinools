@@ -12,7 +12,7 @@ use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare, wait_for_socket,
+    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare_command, wait_for_socket,
 };
 use crate::sandbox::socket_path;
 
@@ -106,7 +106,7 @@ impl FsMount {
         if let Some(cgroup) = cgroup {
             cgroup.enter(&mut cmd);
         }
-        unshare(&mut cmd);
+        unshare_command(&mut cmd);
         isolate_share(
             &mut cmd,
             share.clone(),
@@ -115,9 +115,9 @@ impl FsMount {
         );
 
         log::debug!("Starting command: {:?}", cmd);
-        let mut child = cmd.spawn().context("spawning virtiofsd")?;
-        if let Err(error) = wait_for_socket(&socket_path, &mut child, Duration::from_secs(10)) {
-            kill_child_and_cleanup(&mut child, &[&socket_path]);
+        let child = cmd.spawn().context("spawning virtiofsd")?;
+        if let Err(error) = wait_for_socket(&socket_path, child.id(), Duration::from_secs(10)) {
+            kill_child_and_cleanup(child.id(), &[&socket_path]);
             return Err(error).with_context(|| format!("sharing `{}`", share.host_dir.display()));
         }
 
@@ -132,7 +132,7 @@ impl FsMount {
 
 impl Drop for FsMount {
     fn drop(&mut self) {
-        kill_child_and_cleanup(&mut self.handle, &[&self.socket_path]);
+        kill_child_and_cleanup(self.handle.id(), &[&self.socket_path]);
     }
 }
 

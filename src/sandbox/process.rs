@@ -1,11 +1,9 @@
-use std::io;
+use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Child, Command};
+use std::process::Command;
 use std::time::{Duration, Instant};
-
-use anyhow::Context;
-use wait_timeout::ChildExt;
+use std::{io, thread};
 
 const SOCKET_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
@@ -32,18 +30,18 @@ pub fn remove_stale_socket(socket_path: &Path) {
 
 pub fn wait_for_socket(
     socket_path: &Path,
-    child: &mut Child,
+    pid: u32,
     timeout: Duration,
 ) -> Result<(), anyhow::Error> {
     let deadline = Instant::now() + timeout;
 
     while Instant::now() < deadline {
-        if socket_path.exists() {
+        if socket_path.exists() && UnixStream::connect(socket_path).is_ok() {
             return Ok(());
         }
-        if let Some(status) = child.try_wait().context("checking on a helper process")? {
+        if !is_process_running(pid) {
             return Err(anyhow::anyhow!(
-                "helper process exited with {status} before creating {}",
+                "helper process exited before creating {}",
                 socket_path.display()
             ));
         }
@@ -56,17 +54,51 @@ pub fn wait_for_socket(
     ))
 }
 
-pub fn kill_child_and_cleanup(child: &mut Child, files_to_remove: &[&Path]) {
-    if !matches!(child.try_wait(), Ok(Some(_))) {
-        unsafe {
-            let _ = libc::kill(child.id() as i32, libc::SIGTERM);
-        }
-        match child.wait_timeout(Duration::from_secs(3)) {
-            Ok(Some(_)) => {}
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
+pub fn kill_child_and_cleanup(pid: u32, files_to_remove: &[&Path]) {
+    if let Ok(pid) = libc::pid_t::try_from(pid)
+        && pid > 0
+    {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut term_sent = false;
+
+        loop {
+            let result = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+
+            if result == pid {
+                break;
             }
+            if result == -1 {
+                if io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {
+                    continue;
+                }
+                break;
+            }
+
+            if !term_sent {
+                unsafe {
+                    libc::kill(pid, libc::SIGTERM);
+                }
+                term_sent = true;
+            }
+
+            if Instant::now() >= deadline {
+                unsafe {
+                    libc::kill(pid, libc::SIGKILL);
+                }
+
+                loop {
+                    let result = unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+
+                    if result != -1
+                        || io::Error::last_os_error().raw_os_error() != Some(libc::EINTR)
+                    {
+                        break;
+                    }
+                }
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(50));
         }
     }
 
@@ -75,29 +107,44 @@ pub fn kill_child_and_cleanup(child: &mut Child, files_to_remove: &[&Path]) {
     }
 }
 
-pub fn unshare(command: &mut Command) {
+pub fn unshare_command(command: &mut Command) {
     // TODO: This needs to do a lot more for sandboxing
     unsafe {
-        command.pre_exec(|| {
-            let (uid, gid) = (libc::getuid(), libc::getgid());
-            if libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS | libc::CLONE_NEWNET) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            std::fs::write("/proc/self/setgroups", "deny")?;
-            std::fs::write("/proc/self/uid_map", format!("0 {uid} 1"))?;
-            std::fs::write("/proc/self/gid_map", format!("0 {gid} 1"))?;
-            // Make sure mounts don't leak outside
-            let res = libc::mount(
-                std::ptr::null(),
-                c"/".as_ptr(),
-                std::ptr::null(),
-                libc::MS_REC | libc::MS_PRIVATE,
-                std::ptr::null(),
-            );
-            if res != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            Ok(())
-        });
+        command.pre_exec(unshare);
     }
+}
+
+pub fn unshare() -> Result<(), std::io::Error> {
+    unsafe {
+        let (uid, gid) = (libc::getuid(), libc::getgid());
+        if libc::unshare(libc::CLONE_NEWUSER | libc::CLONE_NEWNS | libc::CLONE_NEWNET) != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        std::fs::write("/proc/self/setgroups", "deny")?;
+        std::fs::write("/proc/self/uid_map", format!("0 {uid} 1"))?;
+        std::fs::write("/proc/self/gid_map", format!("0 {gid} 1"))?;
+        // Make sure mounts don't leak outside
+        let res = libc::mount(
+            std::ptr::null(),
+            c"/".as_ptr(),
+            std::ptr::null(),
+            libc::MS_REC | libc::MS_PRIVATE,
+            std::ptr::null(),
+        );
+        if res != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
+fn is_process_running(pid: u32) -> bool {
+    let Ok(pid) = libc::pid_t::try_from(pid) else {
+        return false;
+    };
+    if pid <= 0 {
+        return false;
+    }
+
+    unsafe { libc::kill(pid, 0) == 0 }
 }
