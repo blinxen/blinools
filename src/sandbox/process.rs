@@ -54,6 +54,32 @@ pub fn wait_for_socket(
     ))
 }
 
+pub fn wait_for_pid_file(
+    pid_path: &Path,
+    pid: u32,
+    timeout: Duration,
+) -> Result<(), anyhow::Error> {
+    let deadline = Instant::now() + timeout;
+
+    while Instant::now() < deadline {
+        if pid_path.exists() {
+            return Ok(());
+        }
+        if !is_process_running(pid) {
+            return Err(anyhow::anyhow!(
+                "helper process exited before creating {}",
+                pid_path.display()
+            ));
+        }
+        std::thread::sleep(SOCKET_POLL_INTERVAL);
+    }
+
+    Err(anyhow::anyhow!(
+        "timed out waiting for {} to appear",
+        pid_path.display()
+    ))
+}
+
 pub fn kill_child_and_cleanup(pid: u32, files_to_remove: &[&Path]) {
     if let Ok(pid) = libc::pid_t::try_from(pid)
         && pid > 0
