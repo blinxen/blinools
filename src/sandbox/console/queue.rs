@@ -38,6 +38,11 @@ impl FilteredQueue {
         self.buffer.extend_from_slice(bytes);
     }
 
+    pub fn clear(&mut self) {
+        self.offset = 0;
+        self.buffer.clear();
+    }
+
     pub fn filter_in(&mut self, bytes: &[u8]) {
         self.compact();
         match &mut self.filter {

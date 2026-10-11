@@ -57,6 +57,13 @@ impl Console {
                 .context("allocating a pty for the guest console");
         }
 
+        // openpty does not set FD_CLOEXEC
+        for fd in [master, slave] {
+            if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } == -1 {
+                return Err(io::Error::last_os_error()).context("setting CLOEXEC on pty fds");
+            }
+        }
+
         let console = Console {
             master: unsafe { OwnedFd::from_raw_fd(master) },
             slave: Some(unsafe { OwnedFd::from_raw_fd(slave) }),
@@ -161,6 +168,10 @@ impl Console {
                 master_events |= libc::POLLOUT;
             }
 
+            if guest_gone {
+                to_guest.clear();
+            }
+
             let mut poll_fds = [
                 pollfd(std::io::stdin().as_raw_fd(), stdin_events),
                 pollfd(self.master.as_raw_fd(), master_events),
@@ -186,16 +197,24 @@ impl Console {
             // Read whatever the user typed and append it to the to_guest outgoing buffer
             if poll_fds[0].revents != 0 {
                 match read(std::io::stdin().as_raw_fd(), &mut buffer) {
-                    Ok(0) | Err(_) => stdin_open = false,
+                    Ok(0) => stdin_open = false,
                     Ok(count) => to_guest.push(&buffer[..count]),
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                        ) => {}
+                    Err(_) => stdin_open = false,
                 }
             }
 
             // Master has room to write into, drain guest as much as possible into master
             if poll_fds[1].revents & libc::POLLOUT != 0 {
-                to_guest
-                    .drain_into(self.master.as_raw_fd())
-                    .context("forwarding input to the guest console")?;
+                match to_guest.drain_into(self.master.as_raw_fd()) {
+                    Ok(_) => {}
+                    Err(e) if e.raw_os_error() == Some(libc::EIO) => guest_gone = true,
+                    Err(e) => return Err(e).context("forwarding input to the guest console"),
+                }
             }
 
             // Master has no room to write into, so read into master instead and at the same time
@@ -203,9 +222,18 @@ impl Console {
             if poll_fds[1].revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) != 0 {
                 match read(self.master.as_raw_fd(), &mut buffer) {
                     // nothing was read -> guest is gone
-                    Ok(0) | Err(_) => guest_gone = true,
+                    Ok(0) => guest_gone = true,
                     // something was read, send to master but filter the bytes first
                     Ok(count) => to_master.filter_in(&buffer[..count]),
+                    // Not an error and not "gone": just nothing to read right now
+                    Err(e)
+                        if matches!(
+                            e.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                        ) => {}
+                    // Linux reports "all slave fds closed" as EIO on the master
+                    Err(e) if e.raw_os_error() == Some(libc::EIO) => guest_gone = true,
+                    Err(e) => return Err(e).context("reading guest console output"),
                 }
             }
 

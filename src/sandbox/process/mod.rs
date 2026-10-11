@@ -19,7 +19,7 @@ use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::PROCESS_TERMINATE_TIMEOUT;
 use crate::sandbox::process::pach_messages::PachMessage;
 
-const WAIT_TIMEOUT: Duration = Duration::from_secs(5);
+const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const SOCKET_READ_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TERMINATE_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -49,6 +49,9 @@ pub struct Process {
     // and only then run passt.
     // This channel is not the same parent and child
     pach: Option<UnixStream>,
+    // Needed for cleanup since we need to differentiate between parent and child
+    // pid can't be used here because in the case of a failed exec, we don't had pid set
+    is_child: bool,
 }
 
 impl Process {
@@ -66,6 +69,7 @@ impl Process {
             pid: None,
             status: None,
             pach: None,
+            is_child: false,
         }
     }
 
@@ -186,6 +190,7 @@ impl Process {
             -1 => Err(io::Error::last_os_error())
                 .with_context(|| format!("starting {}", self.binary.display())),
             0 => {
+                self.is_child = true;
                 drop(parent_sock);
                 self.pach = Some(child_sock);
                 let message = match panic::catch_unwind(AssertUnwindSafe(|| self.child(uid, gid))) {
@@ -199,6 +204,10 @@ impl Process {
             }
             pid => {
                 drop(child_sock);
+                // Drop the referenced to the fds since the parent does not need them
+                self.stdin.take();
+                self.stdout.take();
+                self.stderr.take();
                 self.pid = Some(pid as libc::pid_t);
 
                 let result = match PachMessage::recv(&mut parent_sock) {
@@ -375,6 +384,10 @@ impl Process {
             unsafe { libc::_exit(1) };
         }
 
+        if let Some(hook) = self.pre_exec.take() {
+            hook().context("pre_exec")?;
+        }
+
         let dev_null = File::options()
             .read(true)
             .write(true)
@@ -394,10 +407,6 @@ impl Process {
             .map_or(dev_null.as_raw_fd(), AsRawFd::as_raw_fd);
         for (fd, target) in [(stdin, 0), (stdout, 1), (stderr, 2)] {
             dup2(fd, target).with_context(|| format!("redirecting fd {target}"))?;
-        }
-
-        if let Some(hook) = self.pre_exec.take() {
-            hook().context("pre_exec")?;
         }
 
         let argv: Vec<CString> = std::iter::once(self.binary.as_os_str())
@@ -424,6 +433,10 @@ impl fmt::Debug for Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
+        if self.is_child {
+            return;
+        }
+
         if let Some(pid) = self.pid
             && matches!(self.try_wait(), Ok(None))
         {
@@ -432,9 +445,12 @@ impl Drop for Process {
             while matches!(self.try_wait(), Ok(None)) && Instant::now() < deadline {
                 std::thread::sleep(TERMINATE_POLL_INTERVAL);
             }
+
             if matches!(self.try_wait(), Ok(None)) {
                 unsafe { libc::kill(pid, libc::SIGKILL) };
-                let _ = self.wait();
+                if let Err(e) = self.wait() {
+                    log::warn!("failed to reap pid {pid} after SIGKILL: {e}");
+                }
             }
         }
 
