@@ -15,6 +15,7 @@ garde = { version = "0.23", features = ["derive"] }
 imago = { version = "0.2", default-features = false, features = ["sync"] }
 libc = "0.2"
 log = { version = "0.4", default-features = false }
+nftables = "0.6"
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 rand = "0.10"
 serde = { version = "1", features = ["derive"] }

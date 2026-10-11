@@ -36,8 +36,9 @@ pub enum RootfsType {
 #[serde(deny_unknown_fields)]
 pub enum Network {
     None,
+    Unrestricted,
     #[default]
-    Lan,
+    Restricted,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]

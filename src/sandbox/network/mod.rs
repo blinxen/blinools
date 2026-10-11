@@ -1,3 +1,4 @@
+mod firewall;
 mod passt;
 mod pasta;
 
@@ -29,9 +30,9 @@ pub fn create(config: &Config, cgroup: Option<&CGroup>) -> Result<Network, anyho
     pasta
         .wait_for_pid_file(PASTA_STARTUP_TIMEOUT)
         .context("waiting for pasta")?;
-    passt.exec()?;
 
     // Wait until the vhost-user socket is available
+    passt.exec()?;
     passt
         .wait_for_socket(PASST_STARTUP_TIMEOUT)
         .context("waiting for sandbox network")?;

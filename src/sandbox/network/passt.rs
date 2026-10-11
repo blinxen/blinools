@@ -7,7 +7,9 @@ use anyhow::Context;
 
 use crate::sandbox::{
     cgroup::CGroup,
+    config,
     config::Config,
+    network::firewall,
     process::{Process, remove_stale_socket},
     socket_path,
 };
@@ -80,6 +82,10 @@ impl Passt {
         process.remove_on_drop(&socket_path);
         process.isolate().context("starting passt")?;
         let pid = process.pid().context("passt has no pid")?;
+
+        if config.network == config::Network::Restricted {
+            process.pre_exec(firewall::install);
+        }
 
         Ok(Passt {
             pid,
