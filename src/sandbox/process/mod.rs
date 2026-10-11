@@ -19,10 +19,14 @@ use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::PROCESS_TERMINATE_TIMEOUT;
 use crate::sandbox::process::pach_messages::PachMessage;
 
-const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const SOCKET_READ_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TERMINATE_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+#[cfg(not(test))]
+const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(test)]
+const WAIT_TIMEOUT: Duration = Duration::from_millis(200);
 
 // https://github.com/torvalds/linux/blob/master/include/uapi/linux/sched.h#L38
 const CLONE_INTO_CGROUP: u64 = 1 << 33;
@@ -596,10 +600,14 @@ mod tests {
     }
 
     #[test]
-    fn waiting_timesout() {
+    fn waiting_should_timeout() {
         let mut process = sh("sleep 30");
-        process.spawn().unwrap();
-        assert!(process.wait().is_err());
+        process.no_namespaces().spawn().unwrap();
+
+        let err = process.wait().unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::TimedOut);
+        // Timing out must not have reaped or killed it.
+        assert!(matches!(process.try_wait(), Ok(None)));
     }
 
     #[test]
