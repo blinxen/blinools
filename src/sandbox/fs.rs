@@ -1,19 +1,14 @@
 use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::time::Duration;
 
 use anyhow::Context;
 
 use crate::sandbox::cgroup::CGroup;
-use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
+use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction, VIRTIOFSD_STARTUP_TIMEOUT};
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare_command, wait_for_socket,
-};
+use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::socket_path;
 
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
@@ -23,7 +18,7 @@ pub struct FsMount {
     pub tag: Name,
     pub socket_path: PathBuf,
     pub read_only: bool,
-    handle: Child,
+    _process: Process,
 }
 
 impl FsMount {
@@ -42,8 +37,9 @@ impl FsMount {
             binary_path = binary.to_path_buf();
         }
 
-        let mut cmd = Command::new(binary_path);
-        cmd.arg("--socket-path")
+        let mut process = Process::new(binary_path, cgroup);
+        process
+            .arg("--socket-path")
             .arg(&socket_path)
             .arg("--shared-dir")
             .arg(&share.host_dir)
@@ -75,115 +71,97 @@ impl FsMount {
                 config.sandbox_user_gid
             ));
         if share.read_only {
-            cmd.arg("--readonly");
+            process.arg("--readonly");
         }
-        cmd.stdin(Stdio::null());
-        cmd.stdout(Stdio::null());
-
         let log_file = OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(socket_path.with_extension("log"))
             .context("create log file for virtiofsd")?;
-        cmd.stderr(Stdio::from(log_file));
+        process.stderr(log_file.into());
 
         if log::log_enabled!(log::Level::Trace) {
-            cmd.arg("--log-level");
-            cmd.arg("trace");
+            process.arg("--log-level");
+            process.arg("trace");
         } else if log::log_enabled!(log::Level::Debug) {
-            cmd.arg("--log-level");
-            cmd.arg("debug");
+            process.arg("--log-level");
+            process.arg("debug");
         } else if log::log_enabled!(log::Level::Info) {
-            cmd.arg("--log-level");
-            cmd.arg("info");
+            process.arg("--log-level");
+            process.arg("info");
         } else if log::log_enabled!(log::Level::Warn) {
-            cmd.arg("--log-level");
-            cmd.arg("warn");
+            process.arg("--log-level");
+            process.arg("warn");
         };
 
-        die_with_parent(&mut cmd);
-        if let Some(cgroup) = cgroup {
-            cgroup.enter(&mut cmd);
-        }
-        unshare_command(&mut cmd);
         isolate_share(
-            &mut cmd,
+            &mut process,
             share.clone(),
             config.git_action.clone(),
             overrides.clone(),
         );
 
-        log::debug!("Starting command: {:?}", cmd);
-        let child = cmd.spawn().context("spawning virtiofsd")?;
-        if let Err(error) = wait_for_socket(&socket_path, child.id(), Duration::from_secs(10)) {
-            kill_child_and_cleanup(child.id(), &[&socket_path]);
-            return Err(error).with_context(|| format!("sharing `{}`", share.host_dir.display()));
-        }
+        process.remove_on_drop(&socket_path);
+        process.spawn().context("spawning virtiofsd")?;
+        // Never use wait_for_socket since virtiofsd only accepts a single connection
+        process
+            .wait_for_file(&socket_path, VIRTIOFSD_STARTUP_TIMEOUT)
+            .with_context(|| format!("sharing `{}`", share.host_dir.display()))?;
 
         Ok(FsMount {
             tag: share.name.clone(),
             socket_path,
-            handle: child,
             read_only: share.read_only,
+            _process: process,
         })
-    }
-}
-
-impl Drop for FsMount {
-    fn drop(&mut self) {
-        kill_child_and_cleanup(self.handle.id(), &[&self.socket_path]);
     }
 }
 
 // Create a user and mount namespace to hide / mark subpaths as read_only
 // virtiofsd does pivot_namespace so we don't have to
 fn isolate_share(
-    command: &mut Command,
+    process: &mut Process,
     share: FsShare,
     git_action: GitAction,
     overrides: CliOverrides,
 ) {
-    unsafe {
-        command.pre_exec(move || {
-            if share.read_only || overrides.read_only {
-                mount_read_only(&share.host_dir, &share.host_dir)?;
-            } else {
-                for path in &share.read_only_paths {
+    process.pre_exec(move || {
+        if share.read_only || overrides.read_only {
+            mount_read_only(&share.host_dir, &share.host_dir)?;
+        } else {
+            for path in &share.read_only_paths {
+                mount_read_only(path, path)?;
+            }
+        }
+
+        if !overrides.no_hidden {
+            for path in &share.hidden_paths {
+                if overrides.hidden_as_read_only {
                     mount_read_only(path, path)?;
+                    continue;
+                }
+                if std::fs::symlink_metadata(path)?.is_dir() {
+                    hide_dir(path)?;
+                } else {
+                    hide_file(path)?;
                 }
             }
+        }
 
-            if !overrides.no_hidden {
-                for path in &share.hidden_paths {
-                    if overrides.hidden_as_read_only {
-                        mount_read_only(path, path)?;
-                        continue;
-                    }
-                    if std::fs::symlink_metadata(path)?.is_dir() {
-                        hide_dir(path)?;
-                    } else {
-                        hide_file(path)?;
-                    }
-                }
-            }
+        match share.git_action {
+            Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+            Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+            Some(GitAction::None) => {}
+            None => match git_action {
+                GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+                GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+                GitAction::None => {}
+            },
+        }
 
-            match share.git_action {
-                Some(GitAction::ReadOnly) => {
-                    lookup_git_dirs_and_apply_action(&share.host_dir, false)
-                }
-                Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-                Some(GitAction::None) => {}
-                None => match git_action {
-                    GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
-                    GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-                    GitAction::None => {}
-                },
-            }
-
-            Ok(())
-        });
-    }
+        Ok(())
+    });
 }
 
 fn lookup_git_dirs_and_apply_action(path: &Path, hide: bool) {

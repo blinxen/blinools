@@ -4,7 +4,6 @@ mod signals;
 
 use std::io::{self, IsTerminal};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Context;
@@ -25,9 +24,9 @@ pub enum ConsoleExit {
 }
 
 pub struct ConsoleIo {
-    pub stdin: Stdio,
-    pub stdout: Stdio,
-    pub stderr: Stdio,
+    pub stdin: OwnedFd,
+    pub stdout: OwnedFd,
+    pub stderr: OwnedFd,
 }
 
 // The idea here is that we attach to the sandbox pty and filter problematic
@@ -89,9 +88,9 @@ impl Console {
             .context("guest console was already handed out")?;
 
         Ok(ConsoleIo {
-            stdin: Stdio::from(slave.try_clone()?),
-            stdout: Stdio::from(slave.try_clone()?),
-            stderr: Stdio::from(slave),
+            stdin: slave.try_clone()?,
+            stdout: slave.try_clone()?,
+            stderr: slave,
         })
     }
 

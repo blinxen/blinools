@@ -53,7 +53,6 @@ impl fmt::Display for State {
 
 pub trait Vm {
     fn wait(&mut self) -> Result<ExitStatus, std::io::Error>;
-    fn terminate(&mut self);
 }
 
 pub trait Hypervisor {
@@ -175,14 +174,14 @@ fn ensure_overlay_backs_onto_rootfs(
     let rootfs_type = cfg.rootfs_type.to_string();
 
     if recorded != (Some(rootfs.as_str()), Some(rootfs_type.as_str())) {
-        return Err(anyhow::anyhow!(
+        anyhow::bail!(
             "the overlay of sandbox `{}` was created from `{}` ({}), but the configured rootfs is \
              `{rootfs}` ({rootfs_type}). Pass --recreate to build a new overlay, which discards \
              everything the sandbox has written so far.",
             cfg.name,
             recorded.0.unwrap_or("no backing file"),
             recorded.1.unwrap_or("unknown format"),
-        ));
+        );
     }
 
     Ok(())

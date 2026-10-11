@@ -191,7 +191,7 @@ fn create_sandbox(
             ConsoleExit::GuestGone => {
                 vm.wait().context("waiting for sandbox to exit")?;
             }
-            ConsoleExit::Terminated => vm.terminate(),
+            ConsoleExit::Terminated => drop(vm),
         }
     }
 
@@ -215,9 +215,9 @@ fn delete_sandbox(
 
     let lock = SandboxLock::try_acquire(name)?;
     if !force && (lock.is_none() || hypervisor.is_running(&sandbox_runtime_dir)) {
-        return Err(anyhow::anyhow!(
+        anyhow::bail!(
             "can't delete a running sandbox, either use --force or shut the sandbox down and then try again"
-        ));
+        );
     }
 
     hypervisor.shutdown(&sandbox_runtime_dir, force)?;
@@ -295,9 +295,7 @@ fn ensure_unique_sandbox_name(
 ) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(name);
     if hypervisor::for_sandbox(config, &sandbox_runtime_dir).is_running(&sandbox_runtime_dir) {
-        return Err(anyhow::anyhow!(
-            "a sandbox with the same name already exists"
-        ));
+        anyhow::bail!("a sandbox with the same name already exists");
     }
     Ok(())
 }
@@ -344,11 +342,11 @@ fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), a
     for path in paths {
         let length = path.as_os_str().len();
         if length > MAX_SOCKET_PATH_LENGTH {
-            return Err(anyhow::anyhow!(
+            anyhow::bail!(
                 "socket path `{}` is {length} bytes, which is over the {MAX_SOCKET_PATH_LENGTH} \
                  byte limit for unix sockets, use a shorter sandbox or share name",
                 path.display()
-            ));
+            );
         }
     }
 

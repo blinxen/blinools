@@ -138,7 +138,7 @@ where
     {
         Ok(shares) => Ok(Some(shares)),
         Err(config::ConfigError::NotFound(_)) => Ok(None),
-        Err(error) => Err(anyhow::Error::new(error).context("parsing shares")),
+        Err(error) => anyhow::bail!("parsing shares : {}", error),
     }
 }
 

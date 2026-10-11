@@ -1,22 +1,19 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus};
+use std::process::ExitStatus;
 use std::time::Duration;
 
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::sandbox::config::Config;
+use crate::sandbox::config::{CLOUD_HYPERVISOR_API_TIMEOUT, Config};
 use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
-use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare_command,
-};
+use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
-const API_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_API_RESPONSE_LENGTH: usize = 64 * 1024;
 pub const SOCKET_NAME: &str = "cloud-hypervisor";
 
@@ -54,8 +51,8 @@ impl Hypervisor for CloudHypervisor {
         let api_socket = socket_path(cfg.name, SOCKET_NAME);
         remove_stale_socket(&api_socket);
         remove_stale_socket(&api_socket.with_added_extension("lock"));
-        let mut command = Command::new(&self.binary);
-        command
+        let mut process = Process::new(&self.binary, cfg.cgroup);
+        process
             .arg("--api-socket")
             .arg(&api_socket)
             .arg("--log-file")
@@ -85,38 +82,30 @@ impl Hypervisor for CloudHypervisor {
             .arg("tty");
 
         if let Some(network_socket) = cfg.network_socket {
-            command.arg("--net").arg(format!(
+            process.arg("--net").arg(format!(
                 "vhost_user=true,socket={}",
                 network_socket.display()
             ));
         }
 
         if log::log_enabled!(log::Level::Trace) {
-            command.arg("-vvv");
+            process.arg("-vvv");
         } else if log::log_enabled!(log::Level::Debug) {
-            command.arg("-vv");
+            process.arg("-vv");
         } else if log::log_enabled!(log::Level::Info) {
-            command.arg("-v");
+            process.arg("-v");
         };
 
-        die_with_parent(&mut command);
-        if let Some(cgroup) = cfg.cgroup {
-            cgroup.enter(&mut command);
-        }
-        unshare_command(&mut command);
-
-        command
+        process
             .stdin(cfg.console.stdin)
             .stdout(cfg.console.stdout)
-            .stderr(cfg.console.stderr);
+            .stderr(cfg.console.stderr)
+            .remove_on_drop(&api_socket)
+            .remove_on_drop(api_socket.with_added_extension("lock"));
 
-        log::debug!("Starting command: {:?}", command);
-        let handle = command.spawn().context("spawning cloud-hypervisor")?;
+        process.spawn().context("spawning cloud-hypervisor")?;
 
-        Ok(Box::new(CloudHypervisorVm {
-            socket_path: api_socket,
-            handle,
-        }))
+        Ok(Box::new(CloudHypervisorVm { process }))
     }
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool {
@@ -130,18 +119,14 @@ impl Hypervisor for CloudHypervisor {
                 .context("requesting cloud hypervisor to shut down the sandbox")?;
 
             if !force && !vm_response.success() {
-                return Err(anyhow::anyhow!(
-                    "shutting down the sandbox was not successful"
-                ));
+                anyhow::bail!("shutting down the sandbox was not successful");
             }
 
             let vmm_response = api(&api_socket_path, "PUT", "vmm.shutdown", None)
                 .context("requesting cloud hypervisor to shut down the sandbox")?;
 
             if !vmm_response.success() {
-                return Err(anyhow::anyhow!(
-                    "shutting down the sandbox was not successful"
-                ));
+                anyhow::bail!("shutting down the sandbox was not successful");
             }
         }
 
@@ -167,30 +152,12 @@ impl Hypervisor for CloudHypervisor {
 }
 
 pub struct CloudHypervisorVm {
-    socket_path: PathBuf,
-    handle: Child,
+    process: Process,
 }
 
 impl Vm for CloudHypervisorVm {
     fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
-        self.handle.wait()
-    }
-
-    fn terminate(&mut self) {
-        kill_child_and_cleanup(
-            self.handle.id(),
-            &[
-                &self.socket_path,
-                &self.socket_path.with_added_extension("lock"),
-            ],
-        );
-    }
-}
-
-impl Drop for CloudHypervisorVm {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.socket_path);
-        let _ = std::fs::remove_file(self.socket_path.with_added_extension("lock"));
+        self.process.wait()
     }
 }
 
@@ -219,7 +186,13 @@ fn api(
     path: &str,
     body: Option<&str>,
 ) -> Result<ApiResponse, anyhow::Error> {
-    api_with_timeout(socket_path, method, path, body, API_TIMEOUT)
+    api_with_timeout(
+        socket_path,
+        method,
+        path,
+        body,
+        CLOUD_HYPERVISOR_API_TIMEOUT,
+    )
 }
 
 fn api_with_timeout(
@@ -269,9 +242,9 @@ fn api_with_timeout(
         }
         response.extend_from_slice(&bytes[..count]);
         if response.len() > MAX_API_RESPONSE_LENGTH {
-            return Err(anyhow::anyhow!(
+            anyhow::bail!(
                 "cloud hypervisor answered with more than {MAX_API_RESPONSE_LENGTH} bytes"
-            ));
+            );
         }
 
         // To parse the body we need content-length header

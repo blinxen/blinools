@@ -4,9 +4,17 @@ use std::{
     collections::HashMap,
     fmt,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use crate::sandbox::name::Name;
+
+pub const PROCESS_TERMINATE_TIMEOUT: Duration = Duration::from_secs(5);
+pub const QMP_TIMEOUT: Duration = Duration::from_secs(5);
+pub const CLOUD_HYPERVISOR_API_TIMEOUT: Duration = Duration::from_secs(5);
+pub const VIRTIOFSD_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+pub const PASTA_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+pub const PASST_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]

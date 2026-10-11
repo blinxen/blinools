@@ -1,22 +1,19 @@
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus};
+use std::process::ExitStatus;
 use std::time::Duration;
 
 use anyhow::Context;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::sandbox::config::Config;
+use crate::sandbox::config::{Config, QMP_TIMEOUT};
 use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
-use crate::sandbox::process::{
-    die_with_parent, kill_child_and_cleanup, remove_stale_socket, unshare_command,
-};
+use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
-const QMP_TIMEOUT: Duration = Duration::from_secs(5);
 const MEMORY_BACKEND: &str = "guest-memory";
 pub const SOCKET_NAME: &str = "qemu-qmp";
 
@@ -38,8 +35,7 @@ impl Qemu {
 }
 
 struct QemuVm {
-    socket_path: PathBuf,
-    handle: Child,
+    process: Process,
 }
 
 #[derive(Deserialize)]
@@ -71,8 +67,8 @@ impl Hypervisor for Qemu {
 
         let overlay = create_qcow2_overlay(&cfg)?;
 
-        let mut command = Command::new(&self.binary);
-        command
+        let mut process = Process::new(&self.binary, cfg.cgroup);
+        process
             .arg("-machine")
             .arg(format!(
                 "microvm,pit=off,pic=off,isa-serial=off,rtc=off,\
@@ -127,7 +123,7 @@ impl Hypervisor for Qemu {
             .arg("virtio-mmio.force-legacy=false");
 
         if let Some(network_socket) = cfg.network_socket {
-            command
+            process
                 .arg("-chardev")
                 .arg(format!(
                     "socket,id=char-net0,path={}",
@@ -140,29 +136,20 @@ impl Hypervisor for Qemu {
         }
 
         if log::log_enabled!(log::Level::Trace) {
-            command.arg("-d").arg("guest_errors,unimp,cpu_reset");
+            process.arg("-d").arg("guest_errors,unimp,cpu_reset");
         } else if log::log_enabled!(log::Level::Debug) {
-            command.arg("-d").arg("guest_errors,unimp");
+            process.arg("-d").arg("guest_errors,unimp");
         }
 
-        die_with_parent(&mut command);
-        if let Some(cgroup) = cfg.cgroup {
-            cgroup.enter(&mut command);
-        }
-        unshare_command(&mut command);
-
-        command
+        process
             .stdin(cfg.console.stdin)
             .stdout(cfg.console.stdout)
-            .stderr(cfg.console.stderr);
+            .stderr(cfg.console.stderr)
+            .remove_on_drop(&api_socket);
 
-        log::debug!("Starting command: {:?}", command);
-        let handle = command.spawn().context("spawning qemu")?;
+        process.spawn().context("spawning qemu")?;
 
-        Ok(Box::new(QemuVm {
-            socket_path: api_socket,
-            handle,
-        }))
+        Ok(Box::new(QemuVm { process }))
     }
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool {
@@ -176,9 +163,7 @@ impl Hypervisor for Qemu {
                 .context("requesting qemu to shut down the sandbox")?;
 
             if response.get("return").is_none() {
-                return Err(anyhow::anyhow!(
-                    "shutting down the sandbox was not successful: {response}"
-                ));
+                anyhow::bail!("shutting down the sandbox was not successful: {response}");
             }
         }
 
@@ -206,17 +191,7 @@ impl Hypervisor for Qemu {
 
 impl Vm for QemuVm {
     fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
-        self.handle.wait()
-    }
-
-    fn terminate(&mut self) {
-        kill_child_and_cleanup(self.handle.id(), &[&self.socket_path]);
-    }
-}
-
-impl Drop for QemuVm {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.socket_path);
+        self.process.wait()
     }
 }
 
@@ -249,7 +224,7 @@ fn qmp_with_timeout(
 
     let ack = execute(&mut stream, &mut responses, "qmp_capabilities", None)?;
     if ack.get("return").is_none() {
-        return Err(anyhow::anyhow!("qmp_capabilities failed: {ack}"));
+        anyhow::bail!("qmp_capabilities failed: {ack}");
     }
 
     execute(&mut stream, &mut responses, command, arguments)

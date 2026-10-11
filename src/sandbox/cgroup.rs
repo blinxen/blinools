@@ -1,7 +1,5 @@
 use std::fs;
-use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
-use std::process::Command;
+use std::path::{Path, PathBuf};
 
 use crate::config::create_dir;
 
@@ -39,15 +37,8 @@ impl CGroup {
         Some(Self { path })
     }
 
-    pub fn enter(&self, command: &mut Command) {
-        // Enter cgroup before launching command
-        let procs_path = self.path.join("cgroup.procs");
-        unsafe {
-            command.pre_exec(move || {
-                fs::write(&procs_path, std::process::id().to_string())?;
-                Ok(())
-            });
-        }
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 

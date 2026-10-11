@@ -1,18 +1,12 @@
-use std::{
-    path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-};
+use std::{path::PathBuf, time::Duration};
 
 use anyhow::Context;
 
 use crate::sandbox::{cgroup::CGroup, config::Config};
-use crate::sandbox::{
-    process::{die_with_parent, kill_child_and_cleanup},
-    socket_path,
-};
+use crate::sandbox::{process::Process, socket_path};
 
 pub struct Pasta {
-    handle: Child,
+    process: Process,
     pid_path: PathBuf,
 }
 
@@ -38,74 +32,58 @@ impl Pasta {
             }
         }
 
-        let mut cmd = Command::new(binary_path);
-        cmd.args([
-            "--log-file",
-            &socket_path.with_extension("log").display().to_string(),
-            "--pid",
-            &pid_path.display().to_string(),
-            "--foreground",
-            "-4",
-            "--no-icmp",
-            "--no-map-gw",
-            "--map-host-loopback",
-            "none",
-            "--map-guest-addr",
-            "none",
-            "-t",
-            "none",
-            "-u",
-            "none",
-            "-T",
-            "none",
-            "-U",
-            "none",
-            "--address",
-            "10.200.0.2",
-            "--netmask",
-            "24",
-            "--gateway",
-            "10.200.0.1",
-            "--no-splice",
-            "--config-net",
-            "--no-netns-quit",
-        ])
-        .args(dns_config)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        let mut process = Process::new(binary_path, cgroup);
+        process
+            .args([
+                "--log-file",
+                &socket_path.with_extension("log").display().to_string(),
+                "--pid",
+                &pid_path.display().to_string(),
+                "--foreground",
+                "-4",
+                "--no-icmp",
+                "--no-map-gw",
+                "--map-host-loopback",
+                "none",
+                "--map-guest-addr",
+                "none",
+                "-t",
+                "none",
+                "-u",
+                "none",
+                "-T",
+                "none",
+                "-U",
+                "none",
+                "--address",
+                "10.200.0.2",
+                "--netmask",
+                "24",
+                "--gateway",
+                "10.200.0.1",
+                "--no-splice",
+                "--config-net",
+                "--no-netns-quit",
+            ])
+            .args(dns_config);
 
         if log::log_enabled!(log::Level::Debug) {
-            cmd.arg("--debug");
+            process.arg("--debug");
         }
 
         if log::log_enabled!(log::Level::Trace) {
-            cmd.arg("--trace");
+            process.arg("--trace");
         }
-        cmd.arg(passt_pid.to_string());
+        process.arg(passt_pid.to_string());
 
-        die_with_parent(&mut cmd);
-        if let Some(cgroup) = cgroup {
-            cgroup.enter(&mut cmd);
-        }
+        // pasta has to stay in the host namespaces to reach the network and join passt
+        process.no_namespaces().remove_on_drop(&pid_path);
+        process.spawn().context("spawning pasta")?;
 
-        log::debug!("Starting command: {:?}", cmd);
-        let handle = cmd.spawn().context("spawing passt")?;
-
-        Ok(Pasta { handle, pid_path })
+        Ok(Pasta { process, pid_path })
     }
 
-    pub fn pid(&self) -> u32 {
-        self.handle.id()
-    }
-
-    pub fn pid_file(&self) -> &Path {
-        &self.pid_path
-    }
-}
-
-impl Drop for Pasta {
-    fn drop(&mut self) {
-        kill_child_and_cleanup(self.handle.id(), &[&self.pid_path]);
+    pub fn wait_for_pid_file(&mut self, timeout: Duration) -> Result<(), anyhow::Error> {
+        self.process.wait_for_file(&self.pid_path, timeout)
     }
 }
