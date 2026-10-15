@@ -79,13 +79,13 @@ impl Passt {
             process.arg("--trace");
         }
 
-        process.remove_on_drop(&socket_path);
-        process.isolate().context("starting passt")?;
-        let pid = process.pid().context("passt has no pid")?;
-
         if config.network == config::Network::Restricted {
             process.pre_exec(firewall::install);
         }
+
+        process.remove_on_drop(&socket_path);
+        process.isolate().context("starting passt")?;
+        let pid = process.pid().context("passt has no pid")?;
 
         Ok(Passt {
             pid,

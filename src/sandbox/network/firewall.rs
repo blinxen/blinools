@@ -1,7 +1,7 @@
 use anyhow::Context;
 use nftables::batch::Batch;
 use nftables::expr::{
-    CT, Expression, Meta, MetaKey, NamedExpression, Payload, PayloadField, Prefix,
+    CT, Expression, Meta, MetaKey, NamedExpression, Payload, PayloadField, Prefix, SetItem,
 };
 use nftables::helper;
 use nftables::schema::{Chain, NfListObject, Rule, Table};
@@ -141,7 +141,9 @@ fn daddr_in(proto: &'static str, nets: Vec<Expression<'static>>) -> Statement<'s
                 field: "daddr".into(),
             },
         ))),
-        right: Expression::List(nets),
+        right: Expression::Named(NamedExpression::Set(
+            nets.into_iter().map(SetItem::Element).collect(),
+        )),
         op: Operator::IN,
     })
 }
