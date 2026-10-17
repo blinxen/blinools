@@ -2,5 +2,6 @@
 *.img
 *.tar*
 kernel
+!kernel/
 linux-*/
 !linux-*.config
