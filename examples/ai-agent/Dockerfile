@@ -93,14 +93,14 @@ RUN groupadd -f "${AGENT_USER}" && \
 # ===========================================================================
 # Mount automation
 # ===========================================================================
-COPY files/mounts/auto-mounts.sh /usr/local/bin/auto-mounts.sh
-COPY files/mounts/auto-mounts.service /etc/systemd/system/auto-mounts.service
-RUN chmod 0500 /usr/local/bin/auto-mounts.sh && \
-    chmod 0600 /etc/systemd/system/auto-mounts.service && \
+COPY files/mounts/agent-mounts.sh /usr/local/bin/agent-mounts.sh
+COPY files/mounts/agent-mounts.service /etc/systemd/system/agent-mounts.service
+RUN chmod 0500 /usr/local/bin/agent-mounts.sh && \
+    chmod 0600 /etc/systemd/system/agent-mounts.service && \
     printf 'AGENT_USER=%s\n' "${AGENT_USER}" > /etc/default/agent-mounts && \
     chmod 0600 /etc/default/agent-mounts && \
     chmod 0700 /mnt && \
-    systemctl enable auto-mounts.service
+    systemctl enable agent-mounts.service
 
 # ===========================================================================
 # Config files
