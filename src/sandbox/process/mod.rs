@@ -217,12 +217,11 @@ impl Process {
                 let result = match PachMessage::recv(&mut parent_sock) {
                     Ok(PachMessage::IsolationDone) => Ok(()),
                     Ok(PachMessage::Failed(message)) => Err(self.child_failure(&message)),
-                    Err(error) if error.kind() != io::ErrorKind::UnexpectedEof => {
-                        Err(self.child_failure(&format!(
+                    Err(error) if error.kind() != io::ErrorKind::UnexpectedEof => Err(self
+                        .child_failure(&format!(
                             "{} did not report back after isolating: {error}",
                             self.binary.display()
-                        )))
-                    }
+                        ))),
                     _ => Err(self.child_failure("")),
                 };
 
