@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-VERSION="7.2.9"
+VERSION="7.2.11"
 
 TARBALL="linux-${VERSION}.tar.xz"
 SRC_DIR="linux-${VERSION}"
@@ -30,5 +30,6 @@ make olddefconfig
 make -j14
 
 cp "arch/x86/boot/bzImage" ../kernel
+cp .config ../linux-7.2.11.config
 
 echo "Kernel built: $(pwd)/../kernel"
