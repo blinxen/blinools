@@ -87,24 +87,25 @@ Currently the only config section is `[sandbox]`, used by the [`sandbox`](#blino
 | `kernel_cmdline` | string | No | `""` | Kernel arguments to pass. Must not contain `console=` or `root=` (see [Architecture](docs/sandbox_architecture.md)). |
 | `rootfs` | path | **Yes** | - | Path to a root filesystem that should be used for the sandbox. This root filesystem is always treated as a read-only base. |
 | `rootfs_type` | `"Raw"` \| `"QCOW2"` | No | `"Raw"` | File format of `rootfs`. |
-| `network` | `"Lan"` \| `"None"` | No | `"Lan"` | Type of network to allow the sandbox to connect to. `Lan` means that sandbox is allowed to connect to the local area network and `None` means to deactivate networking completely (sandbox has no internet connectivity). |
+| `network` | `"Restricted"` \| `"Unrestricted"` \| `"None"` | No | `"Restricted"` | Type of network access the sandbox gets, see [Networking](#networking). `Restricted` allows outgoing connections to the internet but blocks the local network (private, CGNAT and link-local ranges) and everything incoming, `Unrestricted` additionally allows reaching the local network and `None` deactivates networking completely (sandbox has no connectivity). |
 | `memory_mb` | integer | **Yes** | - | How much memory in megabytes the sandbox should received in total. Accepted range is 512 – 131072 (0.5 – 128 GiB). |
 | `cpus` | integer | **Yes** | - | How many CPUs the sandbox is allowed to use. Accepted range is 1 – 255. |
-| `dns` | array of strings | No | - | DNS server IPs to use inside the sandbox. |
-| `git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Defines the action to take when encountering `.git` directories (repositories) or files (`worktrees`) when mounting a share. |
+| `dns` | array of strings | No | - | DNS server IPs to use inside the sandbox. With `network = "Restricted"` these addresses are also exempt from the local network block, so a resolver on a private address has to be listed here to stay reachable. |
+| `git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Defines the action to take when encountering `.git` directories (repositories) or files (`worktrees`) when mounting a share, see [Git integration](#git-integration). |
 | `shares` | array of tables | No | - | List of host directories to mount into the sandbox. Can also be set / overridden per-run with `--share`, see [`sandbox create`](#sandbox-create). |
 | `shares[].name` | string | **Yes** | - | Name of the share. It is used as the sandbox mount point `/mnt/<name>`. |
 | `shares[].host_dir` | path | **Yes** | - | Path to the host directory that should be shared. |
 | `shares[].read_only` | bool | No | `false` | Defines if the shared directory should be read-only or not. The diffrence between this field and the `read_only_paths` field is that here we are talking about the share as a whole. |
 | `shares[].read_only_paths` | array of paths | No | `[]` | Paths inside the share that are read-only. The diffrence between this field and the `read_only` field is that here we are talking about subpaths and not the whole share. |
 | `shares[].hidden_paths` | array of paths | No | `[]` | Paths inside the share that should be hidden (replaced by an empty and read-only file or directory). |
-| `shares[].git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Overrides the global `git_action` action for this share. |
+| `shares[].git_action` | `"ReadOnly"` \| `"Hide"` \| `"None"` | No | `ReadOnly` | Overrides the global `git_action` for this share, see [Git integration](#git-integration). |
 | `inherit_shares` | bool | No | `false` | Decides if the global `shares` are merged underneath the ones of the project file. Only relevant when there is a project configuration. |
 | `sandbox_user_uid` | integer | No | `1000` | UID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
 | `sandbox_user_gid` | integer | No | `1000` | GID host files appear as inside the guest, see [Shares and file ownership](docs/sandbox_architecture.md#shares-and-file-ownership) |
 | `qemu.binary` | path | No | Resolved from `$PATH` as `qemu-system-x86_64` | Path to the qemu binary. Only used when `hypervisor` is `"Qemu"` (the default) |
 | `cloud_hypervisor.binary` | path | No | Resolved from `$PATH` as `cloud-hypervisor` | Path to the `CloudHypervisor` binary. Only used when `hypervisor` is `"CloudHypervisor"` |
 | `passt.binary` | path | No | Resolved from `$PATH` as `passt` | Path to the `passt` binary. |
+| `pasta.binary` | path | No | Resolved from `$PATH` as `pasta` | Path to the `pasta` binary. Only used when `network` is not `"None"`. |
 | `virtiofsd.binary` | path | No | Resolved from `$PATH` as `virtiofsd` | Path to the `virtiofsd` binary. |
 
 ```toml
@@ -113,6 +114,7 @@ hypervisor = "Qemu"
 qemu.binary = "/path/to/qemu-system-x86_64"
 cloud_hypervisor.binary = "/path/to/cloud-hypervisor"
 passt.binary = "/path/to/passt"
+pasta.binary = "/path/to/pasta"
 virtiofsd.binary = "/path/to/virtiofsd"
 kernel = "/boot/vmlinuz-7.1.10-200.fc44.x86_64"
 kernel_cmdline = "rw quiet"
@@ -120,6 +122,8 @@ rootfs = "./rootfs.img"
 memory_mb = 8192
 cpus = 4
 dns = ["192.168.1.1"]
+network = "Restricted"
+git_action = "ReadOnly"
 shares = [
     { name = "share-name", host_dir = "/path/to/a/directory", read_only = false },
 ]
@@ -162,7 +166,9 @@ An architectural overview can be found [here](docs/sandbox_architecture.md).
 - A VMM to create microVMs. `hypervisor` in the config selects which one to use (see [Configuration reference](#configuration-reference)):
   - [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`)
   - [Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor)
-- [passt](https://passt.top) is used to enable networking.
+- [passt](https://passt.top) and its companion `pasta` are used to enable networking (both are shipped in the `passt` package of most distributions).
+- `nft` ([nftables](https://netfilter.org/projects/nftables/)) is used to install the firewall of the default `Restricted` network mode. It is not needed with `network = "None"` or `"Unrestricted"`.
+- Unprivileged user namespaces. Every process `blinools` starts runs in its own set of namespaces, see [Architecture](docs/sandbox_architecture.md#process-isolation).
 - [virtiofsd](https://gitlab.com/virtio-fs/virtiofsd) is used for sharing directories with the microVM.
 - Hardware virtualization (KVM) enabled, with access to `/dev/kvm` (e.g. your user is a member of the `kvm` group).
 
@@ -170,7 +176,7 @@ Fedora:
 
 ```bash
 # virtiofsd is installed under /usr/libexec by default, I recommend configuring "virtiofsd.binary" in the config file.
-sudo dnf install qemu-system-x86 passt virtiofsd
+sudo dnf install qemu-system-x86 passt virtiofsd nftables
 ```
 
 Cloud Hypervisor is not packaged in most distributions, you can either:
@@ -184,8 +190,7 @@ To create a sandbox, you will need a compiled Linux kernel and a rootfs.
 You don't *have* to actually compile your own kernel, you can just use whatever
 your distro provides. The example configuration below uses the official Fedora 44 kernel.
 The rootfs can also be easily created using `podman` (or `docker`).
-Check out the [examples](./examples) directory.
-The example builds a minimal Fedora kernel + rootfs pair.
+Check out the [examples](./examples) directory, see [Examples](#examples) below.
 
 The next steps assume you already have a compiled Linux kernel and a built rootfs.
 See [Configuration reference](#configuration-reference) below for the full list of options.
@@ -214,6 +219,81 @@ blinools sandbox create
 blinools sandbox shutdown <name>
 ```
 
+### Networking
+
+The `network` option controls what the sandbox can reach. The sandbox always gets the static
+address `10.200.0.2/24` (gateway `10.200.0.1`), see the
+[architecture](docs/sandbox_architecture.md#networking) for how it is wired up.
+
+| Value | Outgoing | Incoming | Description |
+| --- | --- | --- | --- |
+| `Restricted` (default) | Public internet only | Blocked (except replies to outgoing connections), no ports are forwarded | The sandbox can't reach the host or any machine on your local network. The loopback interface, RFC 1918 ranges, CGNAT (`100.64.0.0/10`, which includes Tailscale), link-local and IPv6 unique-local ranges are blocked. The servers in `dns` are exempt from this, so they stay reachable even when they are on a private address. |
+| `Unrestricted` | Internet and local network | No ports are forwarded to the sandbox | Same as `Restricted` but without the local network block. |
+| `None` | Nothing | Nothing | Networking is deactivated completely, `passt`, `pasta` and `nft` are not needed. |
+
+### Git integration
+
+`blinools` has some git specific handling when it mounts shares.
+
+#### Git actions
+
+A *git action* decides what happens to the git database and metadata inside a share. When a share is mounted,
+`blinools` looks for entries named `.git` anywhere inside it (symlinks are not followed). This covers
+repositories (a `.git` directory) and worktrees (a `.git` file that points to the real repository).
+The configured action is then applied to each of them:
+
+| Action | Behaviour | Use it when |
+| --- | --- | --- |
+| `ReadOnly` (default) | `.git` is mounted read-only. | The sandbox should see the repository, but must not be able to change it. |
+| `Hide` | `.git` is replaced by an empty, read-only directory or file. The sandbox does not see any repository data. | The sandbox should only see the working tree, not the history. |
+| `None` | `.git` is not treated specially. | The sandbox needs full access to the repository, for example to commit. |
+
+The action is selected with `git_action`. Set it in `[sandbox]` to change the default for every share,
+and use `shares[].git_action` to override it for a single share. A per-share value always wins.
+
+```toml
+[sandbox]
+# Default for all shares
+git_action = "ReadOnly"
+shares = [
+    # Uses the default (ReadOnly)
+    { name = "project", host_dir = "/home/me/project" },
+    # Needs to commit, so no special handling
+    { name = "scratch", host_dir = "/home/me/scratch", git_action = "None" },
+    # Only the working tree is visible
+    { name = "docs", host_dir = "/home/me/docs", git_action = "Hide" },
+]
+```
+
+A few things to keep in mind:
+
+- Git actions are independent of `read_only`, `read_only_paths` and `hidden_paths`. They are an additional
+  layer that only targets `.git`. `--read-only` makes the whole share read-only anyway.
+- `.git` entries are looked up once, when the sandbox is created. A `.git` that is created inside the
+  share while the sandbox is running is not covered.
+- How the actions are enforced is described in the
+  [architecture](docs/sandbox_architecture.md#git-integration).
+
+### Examples
+
+The [examples](./examples) directory contains rootfs definitions you can build with `podman` (or `docker`):
+
+| Example | Description |
+| --- | --- |
+| [`examples/basic`](./examples/basic) | A minimal Fedora 44 rootfs with `systemd`, networking, development tools and an auto-login user. A good starting point for your own rootfs. |
+| [`examples/ai-agent`](./examples/ai-agent) | A hardened Fedora 44 rootfs for isolating AI coding agents. Ships Claude Code, OpenCode and Codex, runs as an `agent` user that has no `sudo` rights other than `poweroff`, and automatically bind-mounts every share from `/mnt/<name>` into the agent's home directory. The accompanying `blinools.toml` in the repository root is configured for this example. |
+
+Each example directory has a `build-kernel.sh` and a `build-rootfs.sh` (shared, in [`misc`](./misc)) which produce
+`kernel` and `rootfs.img` in that directory:
+
+```bash
+cd examples/ai-agent
+./build-kernel.sh   # downloads and compiles a Linux kernel with the matching kernel.config
+./build-rootfs.sh   # builds the Dockerfile and turns it into an ext4 rootfs.img
+cd ../..
+blinools sandbox create
+```
+
 ### CLI reference
 
 ### `sandbox ps`
@@ -239,7 +319,7 @@ blocks until the guest shuts down
 (either from inside the VM, e.g. `sudo poweroff`, or via `blinools sandbox shutdown` from another terminal).
 
 ```bash
-blinools sandbox create [NAME] [-s|--share <SHARE>]... [--recreate] [--delete-after-shutdown]
+blinools sandbox create [NAME] [-s|--share <SHARE>]... [--recreate] [--delete-after-shutdown] [--read-only] [--no-hidden | --hidden-as-read-only]
 ```
 
 | Argument | Default | Description |
@@ -248,9 +328,14 @@ blinools sandbox create [NAME] [-s|--share <SHARE>]... [--recreate] [--delete-af
 | `-s, --share <SHARE>` | none | Mount a host directory into the guest. Repeatable. See [share syntax](#share-syntax) below. Merges with (and overrides, by name) the `shares` list in the config file. |
 | `--recreate` | `false` | Reset the sandbox back to a clean state, wiping any changes made to the rootfs. |
 | `--delete-after-shutdown` | `false` | Automatically run the equivalent of `sandbox delete --force` once the guest shuts down. |
-| `--read-only` | `false` | When set, all shares are mounted read-only, overriding any other configuration. |
+| `--read-only` | `false` | When set, all shares are mounted read-only, overriding any other configuration. Without it, shares are read-write unless configured otherwise. |
 | `--no-hidden` | `false` | When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-write. |
 | `--hidden-as-read-only` | `false` | When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-only. |
+
+The `--read-only`, `--no-hidden` and `--hidden-as-read-only` flags only change how the
+shares of this run are mounted, the configuration file is left untouched. This makes it easy to
+temporarily loosen or tighten what the sandbox can touch, for example to inspect a hidden path
+(`--no-hidden`) or to make sure nothing can be modified (`--read-only`).
 
 #### Share syntax
 
