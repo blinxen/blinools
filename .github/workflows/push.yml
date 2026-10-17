@@ -36,6 +36,10 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      # Ubuntu 24.04 runners restrict user namespaces with AppArmor, which the process tests need
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - run: |
           cargo clippy
           cargo fmt --check

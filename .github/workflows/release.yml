@@ -36,6 +36,10 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # Ubuntu 24.04 runners restrict user namespaces with AppArmor, which the process tests need
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Run integration tests
         run: cargo test --release --target ${{ matrix.target }} -- --test-threads=1
 
