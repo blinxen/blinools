@@ -80,7 +80,8 @@ impl Passt {
         }
 
         if config.network == config::Network::Restricted {
-            process.pre_exec(firewall::install);
+            let dns = config.dns.clone();
+            process.pre_exec(|| firewall::install(dns));
         }
 
         process.remove_on_drop(&socket_path);

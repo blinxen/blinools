@@ -7,10 +7,11 @@ use nftables::helper;
 use nftables::schema::{Chain, NfListObject, Rule, Table};
 use nftables::stmt::{Match, Operator, Statement};
 use nftables::types::{NfChainPolicy, NfChainType, NfFamily, NfHook};
+use std::net::IpAddr;
 
 const TABLE: &str = "ROOT_TABLE";
 
-pub fn install() -> Result<(), anyhow::Error> {
+pub fn install(dns: Option<Vec<String>>) -> Result<(), anyhow::Error> {
     let mut batch = Batch::new();
 
     recreate_table(&mut batch);
@@ -31,6 +32,30 @@ pub fn install() -> Result<(), anyhow::Error> {
         "output",
         vec![meta_eq(MetaKey::Oifname, "lo"), Statement::Drop(None)],
     ));
+
+    let mut dns_v4 = Vec::new();
+    let mut dns_v6 = Vec::new();
+    for entry in dns.into_iter().flatten() {
+        match entry.parse::<IpAddr>() {
+            Ok(ip @ IpAddr::V4(_)) => dns_v4.push(ip_expr(ip)),
+            Ok(ip @ IpAddr::V6(_)) => dns_v6.push(ip_expr(ip)),
+            Err(e) => eprintln!("ignoring invalid DNS address {entry:?}: {e}"),
+        }
+    }
+
+    // Make exceptions for the defined DNS servers.
+    if !dns_v4.is_empty() {
+        batch.add(rule(
+            "output",
+            vec![daddr_in("ip", dns_v4), Statement::Accept(None)],
+        ));
+    }
+    if !dns_v6.is_empty() {
+        batch.add(rule(
+            "output",
+            vec![daddr_in("ip6", dns_v6), Statement::Accept(None)],
+        ));
+    }
 
     batch.add(rule(
         "output",
@@ -124,6 +149,10 @@ fn ct_established() -> Statement<'static> {
         ]),
         op: Operator::IN,
     })
+}
+
+fn ip_expr(ip: IpAddr) -> Expression<'static> {
+    Expression::String(ip.to_string().into())
 }
 
 fn prefix(addr: &'static str, len: u32) -> Expression<'static> {
