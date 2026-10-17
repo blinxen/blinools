@@ -301,7 +301,11 @@ fn ensure_unique_sandbox_name(
 }
 
 fn existing_sandbox_names() -> Vec<String> {
-    let mut names: Vec<String> = [Some(runtime_dir()), state_dir().ok()]
+    sandbox_names_in([Some(runtime_dir()), state_dir().ok()])
+}
+
+fn sandbox_names_in(dirs: impl IntoIterator<Item = Option<PathBuf>>) -> Vec<String> {
+    let mut names: Vec<String> = dirs
         .into_iter()
         .flatten()
         .filter_map(|dir| std::fs::read_dir(dir).ok())
@@ -496,20 +500,18 @@ mod tests {
 
     #[test]
     #[serial]
-    fn existing_sandbox_names_still_lists_runtime_when_state_dir_unresolvable() {
+    fn sandbox_names_in_still_lists_runtime_when_state_dir_is_unresolvable() {
+        // `state_dir()` can't be forced to fail through the environment (`home_dir` falls back to
+        // the passwd entry), so the unresolvable case is passed in directly.
+        // This is also the cause of why we split existing_sandbox_names into two methods
+
         let tmp = tempfile::tempdir().unwrap();
         let xdg_runtime = tmp.path().join("runtime");
+        std::fs::create_dir_all(xdg_runtime.join("only-runtime")).unwrap();
 
-        with_env(
-            &[
-                ("XDG_RUNTIME_DIR", Some(xdg_runtime.to_str().unwrap())),
-                ("XDG_STATE_HOME", None),
-                ("HOME", None),
-            ],
-            || {
-                std::fs::create_dir_all(runtime_dir().join("only-runtime")).unwrap();
-                assert_eq!(existing_sandbox_names(), vec!["only-runtime".to_string()]);
-            },
+        assert_eq!(
+            sandbox_names_in([Some(xdg_runtime), None]),
+            vec!["only-runtime".to_string()]
         );
     }
 
