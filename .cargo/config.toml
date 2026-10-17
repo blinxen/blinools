@@ -1,0 +1,6 @@
+# Tests must run single-threaded: processes are created with a raw clone3, which skips
+# glibc's fork handlers, so a child can deadlock on an allocator lock held by another
+# test thread.
+#
+[env]
+RUST_TEST_THREADS = { value = "1", force = true }

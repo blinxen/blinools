@@ -41,7 +41,7 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Run integration tests
-        run: cargo test --release --target ${{ matrix.target }} -- --test-threads=1
+        run: cargo test --release --target ${{ matrix.target }}
 
       - name: Build binary
         run: cargo build --verbose --release --target ${{ matrix.target }}
