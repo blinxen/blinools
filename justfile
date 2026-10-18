@@ -39,3 +39,7 @@ uninstall:
     rm -f "{{destdir}}{{bindir}}/blinools"
     for f in docs/man/generated/*.1; do rm -f "{{destdir}}{{mandir}}/man1/$(basename "$f")"; done
     for f in docs/man/generated/*.5; do rm -f "{{destdir}}{{mandir}}/man5/$(basename "$f")"; done
+
+clean:
+    cargo clean
+    rm -rf docs/man/generated
