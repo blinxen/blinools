@@ -97,9 +97,7 @@ Check its helper paths and the DNS setting before you use it.
 
 ## Commands
 
-`blinools sandbox --help` lists the subcommands, and each one has its own `--help`.
-The same text is in the man pages,
-for example `man blinools-sandbox-create` for the flags of `create` and the `--share` syntax.
+[blinools-sandbox.md](cli/blinools-sandbox.md) lists the subcommands and has one documentation page for each of them.
 
 ## Networking
 

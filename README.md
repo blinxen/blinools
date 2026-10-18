@@ -82,7 +82,7 @@ The full documentation is split into multiple files:
 - [docs/configuration.md](docs/configuration.md): every option of `blinools.toml`.
 - [docs/sandbox.md](docs/sandbox.md): requirements, getting started and the sandbox commands.
 - [docs/sandbox_architecture.md](docs/sandbox_architecture.md): how sandboxes work internally.
-- [manpages](docs/man/generated)
+- [docs/cli](docs/cli/blinools.md): the command-line reference.
 
 ## Development
 

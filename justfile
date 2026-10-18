@@ -8,7 +8,6 @@ default:
 
 # Generate the man pages.
 man:
-    rm -rf docs/man/generated
     cargo run --locked --features man -- man docs/man/generated
     pandoc -s -f gfm -t man --shift-heading-level-by=-1 \
         -V section=5 -V header="blinools manual" -V footer=blinools \
@@ -16,8 +15,20 @@ man:
         docs/configuration.md -o docs/man/generated/blinools.toml.5
     sed -i -E 's/^\.SH (.*)$/.SH \U\1/' docs/man/generated/blinools.toml.5
 
-# Check the code and man pages.
-check *args: man
+# Generate the Markdown CLI reference in docs/cli from the man pages.
+cli-docs: man
+    mkdir -p docs/cli
+    for page in docs/man/generated/*.1; do \
+        sed 's/\\\*(Aq/\x27/g' "$page" | pandoc -f man -t gfm --wrap=none \
+            | sed -E -e 's/(\*\*)?blinools\.toml(\*\*)?\(5\)/[blinools.toml(5)](..\/configuration.md)/g' \
+                     -e 's/\b(blinools(-[a-z]+)*)\(1\)/[\1(1)](\1.md)/g' \
+            > "docs/cli/$(basename "$page" .1).md"; \
+    done
+
+# Check the code, man pages and CLI reference.
+check *args: man cli-docs
+    git diff --exit-code -- docs/cli
+    test -z "$(git ls-files --others --exclude-standard -- docs/cli)"
     cargo fmt --all -- --check
     cargo clippy --locked --all-targets --features man {{args}}
     cargo test --locked {{args}}
@@ -43,3 +54,4 @@ uninstall:
 clean:
     cargo clean
     rm -rf docs/man/generated
+    rm -rf docs/cli
