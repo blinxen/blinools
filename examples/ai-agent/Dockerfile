@@ -1,4 +1,4 @@
-FROM fedora:44 AS base
+FROM fedora:45 AS base
 
 ARG AGENT_USER=agent
 ARG TIMEZONE=Europe/Berlin
