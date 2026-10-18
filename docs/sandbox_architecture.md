@@ -152,7 +152,7 @@ Some command line flags of `sandbox create` change what happens to these paths f
 
 ### Git integration
 
-The [sandbox manual](man/blinools-sandbox.1) documents the git options.
+The [configuration reference](configuration.md#options) documents `git_action`.
 
 #### Git actions
 
