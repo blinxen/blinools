@@ -2,20 +2,23 @@
 
 A collection of my various bash scripts converted into a Rust CLI (Linux only).
 
-## Documentation
+## Commands
 
-The configuration file is described in [docs/configuration.md](docs/configuration.md).
-For command-line usage run `blinools --help`. `just install` also installs the man pages,
-`man blinools` and `man blinools.toml`.
-The [architecture guide](docs/sandbox_architecture.md) describes how sandboxes work.
+| Command | Description |
+| --- | --- |
+| `blinools sandbox` | Create and manage microVM sandboxes. See [docs/sandbox.md](docs/sandbox.md). |
+| `blinools completions` | Generate shell completion scripts. |
+| `blinools wip-pr` | Not implemented yet. |
+
+Run `blinools --help` or `blinools <command> --help` for the options of each command.
 
 ## Installation
 
 ### Prebuilt binaries
 
 Tagged releases are built for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`.
-Grab the archive for your architecture from the [Releases](../../releases) page,
-then verify and unpack it.
+Download the archive for your architecture and `SHA256SUMS` from [Releases](../../releases),
+then verify and unpack them:
 
 ```bash
 sha256sum -c SHA256SUMS
@@ -24,33 +27,74 @@ tar xzf blinools-<version>-<target>.tar.gz
 
 ### Build from source
 
+You need a Rust toolchain that supports edition 2024 (Rust 1.85 or newer).
+
 ```bash
 git clone https://github.com/blinxen/blinools.git
 cd blinools
 cargo install --path .
-# or
-just install
 ```
 
-This installs the `blinools` binary to `~/.cargo/bin`.
-
-## Examples
-
-The [examples](./examples) directory contains rootfs definitions you can build with `podman` or `docker`.
-
-| Example | Description |
-| --- | --- |
-| [`examples/basic`](./examples/basic) | This provides a minimal Fedora 45 rootfs with `systemd`, networking, development tools and an auto-login user. |
-| [`examples/ai-agent`](./examples/ai-agent) | This provides a Fedora 45 rootfs for isolating AI coding agents. It includes Claude Code, OpenCode and Codex, runs as an `agent` user with the only sudo permission's to run `poweroff`, and auto mounts shares into the agent's home directory. |
-
-Each example has a `build-kernel.sh` and a `build-rootfs.sh` script, shared from
-[`misc`](./misc). They produce `kernel` and `rootfs.img` in the example directory.
+Cargo installs the binary to `~/.cargo/bin` and does not install the man pages.
+To install both, use `just`. This also needs `pandoc`, because one of the man pages is generated from
+[docs/configuration.md](docs/configuration.md):
 
 ```bash
-cd examples/ai-agent
-./build-kernel.sh
-./build-rootfs.sh
+PREFIX="$HOME/.local" just install
 ```
+
+This installs to `~/.local/bin` and `~/.local/share/man`. Without `PREFIX`, `just install` uses
+`/usr/local`, which usually needs administrator rights. `BINDIR`, `MANDIR` and `DESTDIR` are
+supported as well. Make sure the binary directory is in your `PATH`.
+
+To read the man pages without installing them, run `just man` and then, for example,
+`man -l docs/man/generated/blinools-sandbox-create.1`.
+
+### Shell completions
+
+To enable completions in new shells, run the matching command once:
+
+```bash
+# Bash
+echo 'source <(blinools completions bash)' >> ~/.bashrc
+
+# Zsh
+echo 'source <(blinools completions zsh)' >> ~/.zshrc
+
+# Fish
+echo 'blinools completions fish | source' >> ~/.config/fish/config.fish
+```
+
+`bash`, `elvish`, `fish`, `powershell` and `zsh` are supported. Open a new shell afterwards.
+
+## Configuration
+
+blinools reads a global file, `$XDG_CONFIG_HOME/blinools/blinools.toml` (or
+`~/.config/blinools/blinools.toml`), and then a `blinools.toml` in the current directory.
+`-c FILE` or `--config FILE` replaces the file in the current directory, on every command.
+Project values override global ones key by key.
+All options are described in [docs/configuration.md](docs/configuration.md), or in `man blinools.toml`.
+
+## Documentation
+
+The full documentation is split into multiple files:
+
+- [docs/configuration.md](docs/configuration.md): every option of `blinools.toml`.
+- [docs/sandbox.md](docs/sandbox.md): requirements, getting started and the sandbox commands.
+- [docs/sandbox_architecture.md](docs/sandbox_architecture.md): how sandboxes work internally.
+- [manpages](docs/man/generated)
+
+## Development
+
+You need:
+
+- A Rust toolchain (edition 2024) with `rustfmt` and `clippy`.
+- [just](https://github.com/casey/just).
+- `pandoc`, which generates the manpages.
+- `mandoc`, which lints the generated pages.
+
+Tests run on a single thread, which `.cargo/config.toml` enforces. Don't override it, because the
+processes are created with a raw `clone3` and a child can deadlock on an allocator lock held by another test thread.
 
 ## License
 

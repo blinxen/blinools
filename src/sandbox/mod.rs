@@ -58,6 +58,9 @@ pub enum Command {
         #[arg(short = 's', long = "share", value_parser = config::parse_share)]
         shares: Vec<FsShare>,
         /// Specify the sandbox name.
+        ///
+        /// This overrides the name from the configuration. Fails if a sandbox with
+        /// this name is already running.
         #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
         name: Option<Name>,
         /// Recreate the sandbox from the configured rootfs.
