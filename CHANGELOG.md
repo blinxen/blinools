@@ -1,5 +1,11 @@
 # Changelog for `blinools`
 
+## Unreleased
+
+### Changed
+
+* Move documentation into manpages and publish them together on release
+
 ## 0.3.0
 
 ### Breaking changes

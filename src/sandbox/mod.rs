@@ -38,64 +38,82 @@ const MAX_SOCKET_PATH_LENGTH: usize = 107;
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// List all sandboxes
+    /// List all sandboxes and their state.
     Ps,
-    /// Create and start a sandbox
+    /// Create and start a sandbox.
+    ///
+    /// Stays attached to the console until the guest shuts down.
+    /// Reuse a stopped sandbox's rootfs overlay unless --recreate is passed.
+    #[command(
+        after_long_help = "Examples:\n  blinools sandbox create work\n  blinools sandbox create work --share .\n  blinools sandbox create work --share source:.:ro\n  blinools sandbox create work --recreate --delete-after-shutdown"
+    )]
     Create {
-        /// Add a filesystem share. Can be passed multiple times.
+        /// Add a filesystem share.
         ///
-        /// The following formats are accepted:
-        ///
-        /// PATH
-        /// PATH:(rw|ro)
-        /// NAME:PATH:(rw|ro)
+        /// This option can be repeated. Supported forms are PATH, PATH:rw, PATH:ro,
+        /// NAME:PATH:rw and NAME:PATH:ro. Shares are read-write by default.
+        /// Unnamed shares take their name from the directory. Paths are relative
+        /// to the working directory and cannot contain colons. This option replaces
+        /// all settings of a configured share with the same name.
         #[arg(short = 's', long = "share", value_parser = config::parse_share)]
         shares: Vec<FsShare>,
-        /// Sandbox name
+        /// Specify the sandbox name.
         #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
         name: Option<Name>,
-        /// Recreate VM with the configured rootfs
+        /// Recreate the sandbox from the configured rootfs.
         ///
-        /// This will forcefully recreate the overlay containing all changes done since the last
-        /// creation
+        /// This discards the existing rootfs overlay and all changes stored in it.
         #[arg(long = "recreate", default_value_t = false)]
         recreate: bool,
-        /// When set then the sandbox will be deleted once it is shutdown
+        /// Delete the sandbox after it shuts down.
         #[arg(long = "delete-after-shutdown", default_value_t = false)]
         delete_after_shutdown: bool,
-        /// When set, all shares are mounted read-only, overriding any other configuration.
+        /// Mount all shares read-only, overriding the configuration.
         #[arg(long = "read-only", default_value_t = false)]
         read_only: bool,
-        /// When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-write.
+        /// Disable hidden-path masking.
+        ///
+        /// Other read-only restrictions still apply.
         #[arg(long = "no-hidden", default_value_t = false)]
         no_hidden: bool,
-        /// When set, the hidden attribute on paths is ignored, and hidden paths are mounted as read-only.
+        /// Expose hidden paths as read-only instead of masking them.
         #[arg(long = "hidden-as-read-only", default_value_t = false)]
         hidden_as_read_only: bool,
     },
-    /// Gracefully shutdown a sandbox
+    /// Stop a sandbox through its hypervisor.
+    ///
+    /// To let the guest operating system shut down cleanly, run poweroff inside
+    /// the guest.
+    #[command(
+        after_long_help = "Examples:\n  blinools sandbox shutdown work\n  blinools sandbox shutdown work --force"
+    )]
     Shutdown {
-        /// Sandbox name
+        /// Specify the sandbox name.
         #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
         name: Name,
-        /// Force a shutdown and ignore failures
+        /// Ignore guest shutdown failures reported by Cloud Hypervisor.
         ///
-        /// This flag does not affect how we shutdown the VMM itself.
-        /// If the VMM does not shutdown cleanly then a error will be shown.
-        /// The flag just ignores a sandbox shutdown error.
+        /// The command still fails if the virtual machine monitor cannot shut down.
+        /// This flag does not change QEMU shutdown.
         #[arg(short = 'f', long = "force", default_value_t = false)]
         force: bool,
     },
-    /// Delete a sandbox
+    /// Delete a sandbox and all of its saved rootfs changes.
+    ///
+    /// Removes only runtime files and the rootfs overlay.
+    /// The base image and files in host shares are not touched.
+    #[command(
+        after_long_help = "Examples:\n  blinools sandbox delete work\n  blinools sandbox delete work --force"
+    )]
     Delete {
-        /// Sandbox name
+        /// Specify the sandbox name.
         #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
         name: Name,
-        /// Forces a shutdown before deleting
+        /// Shut down a running sandbox before deleting it.
         #[arg(short = 'f', long = "force", default_value_t = false)]
         force: bool,
     },
-    /// Delete all stopped sandboxes
+    /// Delete all stopped sandboxes and their saved rootfs changes.
     Prune,
 }
 

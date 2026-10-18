@@ -1,4 +1,6 @@
 mod config;
+#[cfg(feature = "man")]
+mod man;
 mod sandbox;
 mod wip_pr;
 
@@ -9,12 +11,19 @@ use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{CompleteEnv, Shell, env::Shells};
 
 #[derive(Parser)]
-#[command(name = "blinools", about = "Common utilities blinxen uses")]
+#[command(
+    name = "blinools",
+    about = "Run blinxen's command-line utilities.",
+    after_long_help = "Examples:\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(short = 'c', long = "config", global = true)]
+    /// Use FILE as the project configuration.
+    ///
+    /// This replaces ./blinools.toml. The global configuration still applies.
+    #[arg(short = 'c', long = "config", global = true, value_name = "FILE")]
     config_file: Option<String>,
 
     #[command(flatten)]
@@ -23,35 +32,49 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Creates a worktree in the current directory.
+    /// This command is not yet implemented.
     ///
-    /// The branch naming scheme is <BRANCH_TYPE>-<TASK_NUMBER>-<BRANCH_NAME>.
-    /// BRANCH_TYPE and TASK_NUMBER are optional and can be omitted.
-    /// The worktree will have the name wip_pr-<BRANCH_NAME>.
-    /// If the branch already exists then it will be reused
+    /// It accepts arguments but creates no worktree or branch.
     WipPr {
-        /// The branch name
+        /// Specify the branch name.
         branch_name: String,
 
-        /// Optional branch type
+        /// Specify an optional branch type.
         #[arg(short = 't', long = "branch-type")]
         branch_type: Option<String>,
 
-        /// Optional task number
+        /// Specify an optional task number.
         #[arg(short = 'n', long = "task-number")]
         task_number: Option<String>,
     },
 
-    /// Manage sanboxes
+    /// Create and manage Linux microVM sandboxes.
+    ///
+    /// All sandbox commands require an interactive terminal on standard input.
+    /// To create a sandbox, set kernel, rootfs, memory_mb and cpus in the configuration.
+    #[command(
+        after_long_help = "Examples:\n  blinools sandbox ps\n  blinools sandbox create work\n  blinools sandbox shutdown work"
+    )]
     Sandbox {
         #[command(subcommand)]
         command: sandbox::Command,
     },
 
-    /// Generate shell completion scripts
+    /// Generate shell completion registration scripts.
+    ///
+    /// Source the output in the selected shell to enable dynamic completion.
+    #[command(
+        after_long_help = "Examples:\n  source <(blinools completions bash)\n  source <(blinools completions zsh)\n  blinools completions fish | source"
+    )]
     Completions {
         #[arg(value_enum)]
         shell: Shell,
+    },
+
+    #[cfg(feature = "man")]
+    #[command(hide = true)]
+    Man {
+        directory: std::path::PathBuf,
     },
 }
 
@@ -71,7 +94,7 @@ fn main() -> Result<(), anyhow::Error> {
         } => wip_pr::create(&branch_name, branch_type.as_deref(), task_number.as_deref())?,
         Commands::Sandbox { command } => {
             if !std::io::stdin().is_terminal() {
-                eprintln!("This command requires a interactive terminal session");
+                eprintln!("This command requires an interactive terminal session");
                 std::process::exit(1);
             }
             let config = config::parse_config(args.config_file.as_ref())?;
@@ -90,6 +113,8 @@ fn main() -> Result<(), anyhow::Error> {
                 .write_registration("COMPLETE", &name, &name, &name, &mut std::io::stdout())
                 .context("generating the completion script")?;
         }
+        #[cfg(feature = "man")]
+        Commands::Man { directory } => man::generate(Cli::command(), &directory)?,
     };
 
     Ok(())

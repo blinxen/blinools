@@ -6,6 +6,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "**.rs"
+      - "justfile"
+      - "docs/man/**"
+      - ".github/workflows/*.yml"
     branches:
       - "master"
   pull_request:
@@ -13,6 +16,9 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "**.rs"
+      - "justfile"
+      - "docs/man/**"
+      - ".github/workflows/*.yml"
     branches:
       - "master"
 
@@ -36,11 +42,14 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install manual tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes just mandoc
+
       # Ubuntu 24.04 runners restrict user namespaces with AppArmor, which the process tests need
       - name: Allow unprivileged user namespaces
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      - run: |
-          cargo clippy
-          cargo fmt --check
-          cargo test --verbose
+      - name: Check
+        run: just check
