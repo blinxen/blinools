@@ -1,19 +1,14 @@
 .SH CONFIGURATION
-Sandbox commands read the global configuration, then ./blinools.toml.
-Both files are optional. Use \fB\-c FILE\fR or \fB\-\-config FILE\fR to select
-a different project file, which must exist. The global configuration still applies.
-.PP
-Project values override global values per key. See \fBblinools.toml\fR(5) for
-options and share inheritance rules. Other commands do not read configuration files.
+blinools reads a global configuration file, then ./blinools.toml. Both are optional.
+Use \fB\-c FILE\fR or \fB\-\-config FILE\fR to select a different project file.
+See \fBblinools.toml\fR(5) for the options and for how the files are combined.
 .SH FILES
 .TP
 \fI$XDG_CONFIG_HOME/blinools/blinools.toml\fR
-This file contains global configuration. If XDG_CONFIG_HOME is unset or empty,
-blinools uses ~/.config/blinools/blinools.toml.
+This file contains global configuration. See \fBblinools.toml\fR(5).
 .TP
 \fI./blinools.toml\fR
-This file contains project configuration in the current working directory.
-Parent directories are not searched.
+This file contains project configuration. See \fBblinools.toml\fR(5).
 .TP
 \fI$XDG_STATE_HOME/blinools/\fR
 This directory contains persistent sandbox state. If XDG_STATE_HOME is unset
@@ -39,9 +34,21 @@ blinools uses this value to locate the home directory for configuration and
 state fallbacks.
 .TP
 \fBPATH\fR
-blinools searches these directories for helper programs whose binary paths
-are not configured.
+blinools searches these directories for helper programs whose binary paths are not configured.
 .TP
 \fBCOMPLETE\fR
-This selects the dynamic shell completion protocol. The registration script
-from \fBblinools completions\fR sets this value.
+This selects the dynamic shell completion protocol.
+The registration script from \fBblinools completions\fR sets this value.
+.SH EXIT STATUS
+.TP
+\fB0\fR
+The command completed successfully.
+.TP
+\fB1\fR
+The command failed.
+Possible causes include invalid configuration or a missing interactive terminal.
+.TP
+\fB2\fR
+The command-line arguments were invalid.
+.SH COPYRIGHT
+blinools is licensed under GPL-3.0-or-later. See LICENSE for the full text.

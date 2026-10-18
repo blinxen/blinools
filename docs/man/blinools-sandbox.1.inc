@@ -6,9 +6,9 @@ Set kernel, rootfs, memory_mb and cpus in [sandbox] before creating a sandbox.
 Other sandbox commands do not require this table, but validate any configuration
 files they find.
 .PP
-Install QEMU or Cloud Hypervisor, and virtiofsd for directory shares.
-Networking requires passt and pasta, plus nft for Restricted mode.
-No networking programs are needed with network set to None.
+Install QEMU or Cloud Hypervisor as hypervisors, virtiofsd for directory shares,
+passt and pasta for networking. Make sure nft is enabled since it is used in the
+"Restricted" network mode.
 .SH STORAGE
 The rootfs image is a read-only base. Guest changes are saved in an overlay
 that survives shutdown. The create command reuses it. The \fB\-\-recreate\fR

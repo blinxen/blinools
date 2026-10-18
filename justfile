@@ -8,17 +8,16 @@ default:
 
 # Generate the man pages.
 man:
-    rm -r docs/man/generated || true
-    cargo run --features man -- man docs/man/generated
-    scdoc < docs/man/blinools.toml.5.scd > docs/man/generated/blinools.toml.5
+    rm -rf docs/man/generated
+    cargo run --locked --features man -- man docs/man/generated
+    pandoc -s -f gfm -t man --shift-heading-level-by=-1 \
+        -V section=5 -V header="blinools manual" -V footer=blinools \
+        --metadata date="$(date -u +%F)" \
+        docs/configuration.md -o docs/man/generated/blinools.toml.5
+    sed -i -E 's/^\.SH (.*)$/.SH \U\1/' docs/man/generated/blinools.toml.5
 
 # Check the code and man pages.
 check *args: man
-    if ! git diff --exit-code -- 'docs/man/generated/*' \
-       || [ -n "$(git ls-files --others --exclude-standard -- 'docs/man/generated/*')" ]; then \
-        echo "Run 'just man' and commit the updated man pages." >&2; \
-        exit 1; \
-    fi
     cargo fmt --all -- --check
     cargo clippy --locked --all-targets --features man {{args}}
     cargo test --locked {{args}}

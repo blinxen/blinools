@@ -4,8 +4,9 @@ A collection of my various bash scripts converted into a Rust CLI (Linux only).
 
 ## Documentation
 
-The command-line interface is documented in [blinools(1)](docs/man/blinools.1).
-The configuration file is documented in [blinools.toml(5)](docs/man/blinools.toml.5).
+The configuration file is described in [docs/configuration.md](docs/configuration.md).
+For command-line usage run `blinools --help`. `just install` also installs the man pages,
+`man blinools` and `man blinools.toml`.
 The [architecture guide](docs/sandbox_architecture.md) describes how sandboxes work.
 
 ## Installation

@@ -73,9 +73,7 @@ enum Commands {
 
     #[cfg(feature = "man")]
     #[command(hide = true)]
-    Man {
-        directory: std::path::PathBuf,
-    },
+    Man { directory: std::path::PathBuf },
 }
 
 fn main() -> Result<(), anyhow::Error> {

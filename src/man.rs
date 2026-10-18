@@ -34,7 +34,7 @@ fn descendants(command: &Command, names: &mut Vec<String>) {
 
 fn render(command: &Command, parent: Option<&str>, out_dir: &Path, date: &str) -> io::Result<()> {
     let name = page_name(command);
-    // clap_mangen 0.3 omits option values in the synopsis. Use clap's usage instead.
+    // clap's usage line is shorter than clap_mangen's flag-by-flag synopsis, which leaves out option values.
     let usage = command.clone().render_usage().to_string();
     let usage = usage.strip_prefix("Usage: ").unwrap_or(&usage).to_owned();
     let man = Man::new(command.clone().override_usage(usage))
@@ -70,7 +70,6 @@ fn render(command: &Command, parent: Option<&str>, out_dir: &Path, date: &str) -
         _ => b"",
     };
     output.extend_from_slice(extra);
-    output.extend_from_slice(include_bytes!("../docs/man/common.1.inc"));
 
     let mut references = Vec::new();
     if let Some(parent) = parent {

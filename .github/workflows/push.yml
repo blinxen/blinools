@@ -7,7 +7,7 @@ on:
       - "Cargo.lock"
       - "**.rs"
       - "justfile"
-      - "docs/man/**"
+      - "docs/**"
       - ".github/workflows/*.yml"
     branches:
       - "master"
@@ -17,7 +17,7 @@ on:
       - "Cargo.lock"
       - "**.rs"
       - "justfile"
-      - "docs/man/**"
+      - "docs/**"
       - ".github/workflows/*.yml"
     branches:
       - "master"
@@ -45,7 +45,7 @@ jobs:
       - name: Install manual tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes just mandoc
+          sudo apt-get install --yes just mandoc pandoc
 
       # Ubuntu 24.04 runners restrict user namespaces with AppArmor, which the process tests need
       - name: Allow unprivileged user namespaces

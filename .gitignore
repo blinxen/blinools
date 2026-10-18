@@ -5,3 +5,4 @@ kernel
 !kernel/
 linux-*/
 !linux-*.config
+/docs/man/generated/

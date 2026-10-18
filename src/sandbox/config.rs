@@ -361,7 +361,7 @@ mod tests {
         let file = dir.path().join("file");
         std::fs::File::create(&file).unwrap();
         assert!(dir_exists(dir.path(), &()).is_ok());
-        assert!(dir_exists(&Path::new("i-dont-exist"), &()).is_err());
+        assert!(dir_exists(Path::new("i-dont-exist"), &()).is_err());
         assert!(dir_exists(&file, &()).is_err());
     }
 
@@ -371,7 +371,7 @@ mod tests {
         let file = dir.path().join("file");
         std::fs::File::create(&file).unwrap();
         assert!(file_exists(dir.path(), &()).is_err());
-        assert!(file_exists(&Path::new("i-dont-exist"), &()).is_err());
+        assert!(file_exists(Path::new("i-dont-exist"), &()).is_err());
         assert!(file_exists(&file, &()).is_ok());
     }
 
