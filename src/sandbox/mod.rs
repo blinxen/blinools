@@ -83,7 +83,7 @@ pub enum Command {
     /// Stop a sandbox through its hypervisor.
     ///
     /// To let the guest operating system shut down cleanly, run poweroff inside
-    /// the guest.
+    /// the guest. Does nothing when the hypervisor control socket is unavailable.
     #[command(
         after_long_help = "Examples:\n  blinools sandbox shutdown work\n  blinools sandbox shutdown work --force"
     )]
@@ -102,6 +102,7 @@ pub enum Command {
     ///
     /// Removes only runtime files and the rootfs overlay.
     /// The base image and files in host shares are not touched.
+    /// Deleting a running sandbox fails unless --force is supplied.
     #[command(
         after_long_help = "Examples:\n  blinools sandbox delete work\n  blinools sandbox delete work --force"
     )]
@@ -114,6 +115,8 @@ pub enum Command {
         force: bool,
     },
     /// Delete all stopped sandboxes and their saved rootfs changes.
+    ///
+    /// Asks for confirmation before deleting saved state.
     Prune,
 }
 
