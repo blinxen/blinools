@@ -2,16 +2,18 @@ use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::Context;
 
 use crate::sandbox::cgroup::CGroup;
-use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction, VIRTIOFSD_STARTUP_TIMEOUT};
+use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::socket_path;
 
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
+const VIRTIOFSD_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug)]
 pub struct FsMount {

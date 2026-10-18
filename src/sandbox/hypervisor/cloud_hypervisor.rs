@@ -7,13 +7,14 @@ use std::time::Duration;
 use anyhow::Context;
 use serde::Deserialize;
 
-use crate::sandbox::config::{CLOUD_HYPERVISOR_API_TIMEOUT, Config};
+use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
 use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
+const CLOUD_HYPERVISOR_API_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_API_RESPONSE_LENGTH: usize = 64 * 1024;
 pub const SOCKET_NAME: &str = "cloud-hypervisor";
 

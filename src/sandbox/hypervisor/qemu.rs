@@ -7,13 +7,14 @@ use anyhow::Context;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::sandbox::config::{Config, QMP_TIMEOUT};
+use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
 use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
+const QMP_TIMEOUT: Duration = Duration::from_secs(5);
 const MEMORY_BACKEND: &str = "guest-memory";
 pub const SOCKET_NAME: &str = "qemu-qmp";
 

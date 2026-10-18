@@ -16,12 +16,12 @@ use std::{fmt, io};
 use anyhow::Context;
 
 use crate::sandbox::cgroup::CGroup;
-use crate::sandbox::config::PROCESS_TERMINATE_TIMEOUT;
 use crate::sandbox::process::pach_messages::PachMessage;
 
 const SOCKET_READ_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TERMINATE_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const PROCESS_TERMINATE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[cfg(not(test))]
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);

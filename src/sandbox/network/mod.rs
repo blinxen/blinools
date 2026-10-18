@@ -2,14 +2,14 @@ mod firewall;
 mod passt;
 mod pasta;
 
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use anyhow::Context;
 
-use crate::sandbox::{
-    cgroup::CGroup,
-    config::{Config, PASST_STARTUP_TIMEOUT, PASTA_STARTUP_TIMEOUT},
-};
+use crate::sandbox::{cgroup::CGroup, config::Config};
+
+const PASTA_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+const PASST_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Network {
     passt: passt::Passt,
