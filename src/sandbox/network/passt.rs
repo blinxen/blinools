@@ -79,9 +79,10 @@ impl Passt {
             process.arg("--trace");
         }
 
-        if config.network == config::Network::Restricted {
+        if config.network.kind == config::NetworkKind::Restricted {
             let dns = config.dns.clone();
-            process.pre_exec(|| firewall::install(dns));
+            let exceptions = config.network.exceptions.clone();
+            process.pre_exec(|| firewall::install(dns, exceptions));
         }
 
         process.remove_on_drop(&socket_path);

@@ -1,8 +1,10 @@
 use garde::Validate;
+use ipnet::IpNet;
 use serde::{Deserialize, Deserializer};
 use std::{
     collections::HashMap,
     fmt,
+    net::IpAddr,
     path::{Path, PathBuf},
 };
 
@@ -26,7 +28,7 @@ pub enum RootfsType {
 
 #[derive(PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub enum Network {
+pub enum NetworkKind {
     None,
     Unrestricted,
     #[default]
@@ -72,7 +74,7 @@ pub struct Config {
     #[garde(skip)]
     #[serde(default)]
     pub rootfs_type: RootfsType,
-    #[garde(skip)]
+    #[garde(dive)]
     #[serde(default)]
     pub network: Network,
     #[garde(range(min = 512, max = 131072))]
@@ -107,6 +109,13 @@ pub struct Config {
     pub qemu: Option<BinaryConfig>,
 }
 
+#[derive(Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct BinaryConfig {
+    #[garde(custom(file_exists_optional))]
+    pub binary: Option<PathBuf>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FsShare {
@@ -126,6 +135,34 @@ pub struct FsShare {
     // can't see
     pub hidden_paths: Vec<PathBuf>,
     pub git_action: Option<GitAction>,
+}
+
+#[derive(Default, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct Network {
+    #[garde(skip)]
+    #[serde(default)]
+    pub kind: NetworkKind,
+    #[garde(dive)]
+    #[serde(default)]
+    pub exceptions: Vec<NetworkException>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum IpOrRangeOrHostname {
+    Ip(IpAddr),
+    Range(IpNet),
+    Hostname(String),
+}
+
+#[derive(Clone, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct NetworkException {
+    #[garde(skip)]
+    pub ip_or_range_or_hostname: IpOrRangeOrHostname,
+    #[garde(range(min = 1024))]
+    pub port: Option<u16>,
 }
 
 #[derive(Clone, Debug)]
@@ -167,13 +204,6 @@ impl garde::Validate for FsShare {
             }
         }
     }
-}
-
-#[derive(Deserialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct BinaryConfig {
-    #[garde(custom(file_exists_optional))]
-    pub binary: Option<PathBuf>,
 }
 
 fn default_sandbox_name() -> Name {
