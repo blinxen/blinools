@@ -7,9 +7,8 @@
 for anything you want to run in a throwaway VM. [sandbox_architecture.md](sandbox_architecture.md)
 explains how it is built.
 
-`sandbox create` needs a `[sandbox]` table in your configuration, see
-[configuration.md](configuration.md).
-Every sandbox subcommand needs an interactive terminal on standard input.
+`sandbox create` needs a `[sandbox]` table in your configuration,
+see [configuration.md](configuration.md).
 
 ## Requirements
 

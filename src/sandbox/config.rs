@@ -161,7 +161,7 @@ pub enum IpOrRangeOrHostname {
 pub struct NetworkException {
     #[garde(skip)]
     pub ip_or_range_or_hostname: IpOrRangeOrHostname,
-    #[garde(range(min = 1024))]
+    #[garde(range(min = 1))]
     pub port: Option<u16>,
 }
 

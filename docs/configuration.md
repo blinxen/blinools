@@ -95,7 +95,7 @@ The `network` table has the following options:
   `Restricted` allows outgoing connections to the public internet and blocks
   loopback, private, CGNAT, link-local and IPv6 unique-local destinations,
   except for the configured DNS servers and the defined exceptions (see the next option).
-  `Unrestricted` does not block any connection (except connections to the loopback interface).
+  `Unrestricted` does not block any destinations (except destinations to the loopback interface).
   `None` turns networking completely off.
 - `exceptions` (array of tables): List of exceptions to add for outgoing connections.
   It only makes sense to define this when `mode` is set to `Restricted`.
@@ -106,7 +106,7 @@ The `network` table has the following options:
     Every address it resolves to becomes an exception, and addresses that change later are not picked up.
     A name that can't be resolved is skipped without an error.
   - `port` (integer): Limits the exception to this destination port.
-    The accepted range is from 1024 to 65535.
+    The accepted range is from 1 to 65535.
     Only needs to be defined if you want to limit the exception to a specific port instead of all ports.
 
 Exceptions are applied before the blocked ranges, so they work for addresses
@@ -145,7 +145,7 @@ The `share` table has the following options:
 - `hidden_paths` (array of paths): Paths to hide from the sandbox.
   The same rules as `read_only_paths` apply.
 - `git_action` (enum): Valid options are `"ReadOnly"`, `"Hide"` or `"None"`.
-  Defaults to the `[sandbox.git_action]` value.
+  Defaults to the `[sandbox].git_action` value.
 
 ### Command line overrides
 

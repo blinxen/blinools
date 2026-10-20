@@ -37,6 +37,7 @@ flowchart LR
   socket, or Cloud Hypervisor API socket).
 - **[passt](https://passt.top) and pasta**: Provide user-mode networking over a vhost-user socket.
   The sandbox always gets the static address `10.200.0.2/24` with gateway `10.200.0.1`, NAT'd out to the hosts network.
+  Except the network mode is `None`, then nothing is set.
   Custom DNS servers can be pushed to the sandbox via the `dns` config option.
   The `network` table decides how much of the host network the sandbox can reach,
   see [Networking](#networking).
@@ -85,7 +86,7 @@ A process is created using the `clone3` system call and does the following confi
   The caller's `UID`/`GID` is mapped to `0` inside the user namespace, `setgroups` is denied.
 - a **private mount tree** (`/` is made recursively private) with a freshly mounted `/proc` (`nosuid,nodev,noexec`).
 - a **new cgroup namespace**, which hides the cgroup root from the process.
-- placement **directly into the sandbox cgroup** (see [Resource confinement](#architecture)).
+- placement **directly into the sandbox cgroup** (see [Resource confinement](#resource-confinement)).
 
 ### Networking
 
@@ -94,7 +95,7 @@ Unless `network.mode = "None"` is configured, a sandbox gets its network from tw
 1. `passt` is stared in its **own network namespace** (see [Process isolation](#process-isolation))
    and serves the sandbox NIC over a vhost-user socket. It is not allowed to listen on any host port
    (port forwarding is disabled), `ICMP` is disabled and the host loopback and gateway mappings are off.
-2. `pasta` is started in the host namespaces and attaches to the network namespace of `passt`.
+2. `pasta` is started without any namespaces and attaches to the network namespace of `passt`.
    It connects that namespace to the real host network and NATs the sandbox traffic out.
 
 Because `passt` runs in a separate network namespace, the firewall for the `Restricted` mode is installed
