@@ -30,6 +30,6 @@ make olddefconfig
 make -j14
 
 cp "arch/x86/boot/bzImage" ../kernel
-cp .config ../linux-7.2.11.config
+cp .config "../linux-${VERSION}.config"
 
 echo "Kernel built: $(pwd)/../kernel"
