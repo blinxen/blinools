@@ -187,7 +187,7 @@ fn create_sandbox(
     {
         let cgroup = CGroup::create(config.name.as_str(), config.cpus as f64, config.memory_mb);
         let mut network = None;
-        if config.network.kind == config::NetworkKind::Restricted {
+        if config.network.kind != config::NetworkKind::None {
             network = Some(network::create(&config, cgroup.as_ref())?);
         }
         let mut mounts = Vec::new();
