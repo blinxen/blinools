@@ -59,7 +59,7 @@ With systemd in the guest, shares are mounted at /mnt/NAME. Other init systems c
 
 # NETWORKING
 
-Restricted is the default network mode. Outgoing public internet connections are allowed, while access to loopback, private, CGNAT, link-local and IPv6 unique-local ranges is blocked. Configured DNS servers are exceptions to that block. Unrestricted also permits local-network destinations. None disables networking. No incoming ports are forwarded in either enabled mode.
+Restricted is the default network mode. Outgoing public internet connections are allowed, while access to loopback, private, CGNAT, link-local and IPv6 unique-local ranges is blocked. Configured DNS servers, limited to port 53, and the exceptions listed in network.exceptions are exceptions to that block. Loopback cannot be made an exception. Unrestricted also permits local-network destinations. None disables networking. No incoming ports are forwarded in either enabled mode.
 
 # GIT INTEGRATION
 

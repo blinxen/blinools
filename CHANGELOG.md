@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+### Breaking changes
+
+* The `network` option is now a table with `mode` and `exceptions` instead of a string. Replace `network = "Unrestricted"` with `network = { mode = "Unrestricted" }`. `mode` accepts the same values as before and still defaults to `Restricted`.
+* In `Restricted` mode the servers configured in `dns` are now only reachable on port 53. Before, every port on them was allowed.
+
+### Added
+
+* Add `network.exceptions` to keep individual destinations reachable in `Restricted` mode although they are in a blocked range. An exception is an IP address, a CIDR range or a hostname, optionally limited to one port. Hostnames are resolved when the sandbox starts.
+* Add manual pages for every command (`blinools(1)`, `blinools-sandbox(1)`, ...) and for the configuration file (`blinools.toml(5)`). They are generated with `just man` and included in the release archives under `man/man1` and `man/man5`.
+
 ### Changed
 
-* Move documentation into manpages and publish them together on release
+* Split the documentation into `docs/configuration.md`, `docs/sandbox.md` and `docs/sandbox_architecture.md`, and slim down the README. The documentation is now regular Markdown that can be read in the browser.
 
 ## 0.3.0
 

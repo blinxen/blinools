@@ -25,6 +25,10 @@ sha256sum -c SHA256SUMS
 tar xzf blinools-<version>-<target>.tar.gz
 ```
 
+The archive contains the `blinools` binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the man pages in
+`man/man1` and `man/man5`. Copy the binary to a directory in your `PATH` and the man pages to a
+directory in your `MANPATH`, for example `~/.local/bin` and `~/.local/share/man`.
+
 ### Build from source
 
 You need a Rust toolchain that supports edition 2024 (Rust 1.85 or newer).
@@ -46,6 +50,7 @@ PREFIX="$HOME/.local" just install
 This installs to `~/.local/bin` and `~/.local/share/man`. Without `PREFIX`, `just install` uses
 `/usr/local`, which usually needs administrator rights. `BINDIR`, `MANDIR` and `DESTDIR` are
 supported as well. Make sure the binary directory is in your `PATH`.
+`just uninstall` removes the installed files again, using the same variables.
 
 To read the man pages without installing them, run `just man` and then, for example,
 `man -l docs/man/generated/blinools-sandbox-create.1`.
@@ -67,14 +72,6 @@ echo 'blinools completions fish | source' >> ~/.config/fish/config.fish
 
 `bash`, `elvish`, `fish`, `powershell` and `zsh` are supported. Open a new shell afterwards.
 
-## Configuration
-
-blinools reads a global file, `$XDG_CONFIG_HOME/blinools/blinools.toml` (or
-`~/.config/blinools/blinools.toml`), and then a `blinools.toml` in the current directory.
-`-c FILE` or `--config FILE` replaces the file in the current directory, on every command.
-Project values override global ones key by key.
-All options are described in [docs/configuration.md](docs/configuration.md), or in `man blinools.toml`.
-
 ## Documentation
 
 The full documentation is split into multiple files:
@@ -92,6 +89,9 @@ You need:
 - [just](https://github.com/casey/just).
 - `pandoc`, which generates the manpages.
 - `mandoc`, which lints the generated pages.
+
+Run `just check` before you push.
+It generates the man pages (including the cli docs), checks the formatting, runs clippy and all tests.
 
 Tests run on a single thread, which `.cargo/config.toml` enforces. Don't override it, because the
 processes are created with a raw `clone3` and a child can deadlock on an allocator lock held by another test thread.

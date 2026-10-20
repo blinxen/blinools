@@ -4,8 +4,8 @@ This document describes how sandboxes are built.
 
 ## Architecture
 
-Each sandbox is a Linux microVM. `blinools sandbox create` acts as an
-orchestrator. It spawns a small set of helper processes and wires them
+Each sandbox is a Linux microVM. `blinools sandbox create` acts as an orchestrator.
+It spawns a small set of helper processes and wires them
 together over local Unix sockets, then hands control of the VMs console to
 your terminal.
 
@@ -38,7 +38,7 @@ flowchart LR
 - **[passt](https://passt.top) and pasta**: Provide user-mode networking over a vhost-user socket.
   The sandbox always gets the static address `10.200.0.2/24` with gateway `10.200.0.1`, NAT'd out to the hosts network.
   Custom DNS servers can be pushed to the sandbox via the `dns` config option.
-  The `network` option decides how much of the host network the sandbox can reach,
+  The `network` table decides how much of the host network the sandbox can reach,
   see [Networking](#networking).
 - **[virtiofsd](https://gitlab.com/virtio-fs/virtiofsd)**: Creates one instance per
   configured share and exposes a host directory to the sandbox over virtio-fs.
@@ -49,7 +49,6 @@ flowchart LR
   never modified. On the first run, `blinools` creates a writable qcow2 overlay in
   the sandboxs [state directory](#on-disk-layout). All writes made inside
   the sandbox land in that overlay and persist across restarts.
-  `--recreate` discards this overlay and starts clean.
 - **Process isolation**: The VMM and every helper process are started in their own set of Linux
   namespaces, see [Process isolation](#process-isolation).
 - **Resource confinement**: Linux cgroups v2 is used to limit CPU, memory, and pids
@@ -59,7 +58,6 @@ flowchart LR
   `user.slice/user-<uid>.slice/user@<uid>.service` already exists under
   `/sys/fs/cgroup` (created by systemd when your user session starts) and
   `blinools` can create a `blinools.slice` subgroup under it.
-  A warning will be logged if `blinools` can't create the cgroup.
   Processes are started directly inside the cgroup (`CLONE_INTO_CGROUP`) instead of moving
   themselves into it after they started.
 - **Console filter**: The sandbox console is not attached to your terminal directly. `blinools` puts a
@@ -76,14 +74,12 @@ together. `blinools` allocates a pty, gives the hypervisor the slave side and ke
 filters problematic escape sequences on their way to your terminal emulator.
 
 Keyboard signals such as `Ctrl-C` are not interpreted by the hypervisor, they are passed on to the
-guest (QEMU is started with `signal=off` on its console for this reason). When the guest goes away
-(the pty reports `EIO`/EOF), any input that is still queued for it is dropped and `blinools` moves on
-to waiting for the VM to exit.
+guest.
 
 ### Process isolation
 
-All processes `blinools` starts (the VMM, passt and every virtiofsd) go through the same code path.
-A process is created using `clone3` and does the following configurations (before the actual binary is executed):
+All processes `blinools` starts go through the same code path.
+A process is created using the `clone3` system call and does the following configurations (before the actual binary is executed):
 
 - fresh **user, mount, network, PID, IPC, UTS and time namespaces**.
   The caller's `UID`/`GID` is mapped to `0` inside the user namespace, `setgroups` is denied.
@@ -93,48 +89,51 @@ A process is created using `clone3` and does the following configurations (befor
 
 ### Networking
 
-Unless `network = "None"` is configured, a sandbox gets its network from two cooperating programs:
+Unless `network.mode = "None"` is configured, a sandbox gets its network from two cooperating programs:
 
-1. `passt` is started first, isolated in its **own network namespace** (see [Process isolation](#process-isolation))
+1. `passt` is stared in its **own network namespace** (see [Process isolation](#process-isolation))
    and serves the sandbox NIC over a vhost-user socket. It is not allowed to listen on any host port
    (port forwarding is disabled), `ICMP` is disabled and the host loopback and gateway mappings are off.
 2. `pasta` is started in the host namespaces and attaches to the network namespace of `passt`.
    It connects that namespace to the real host network and NATs the sandbox traffic out.
 
 Because `passt` runs in a separate network namespace, the firewall for the `Restricted` mode is installed
-**inside that namespace** right before `passt` is executed (so there is no window where it runs without
-it). It is an `nftables` table (`ROOT_TABLE`, family `inet`) with these rules:
+**inside that namespace** right before `passt` is executed.
+It is an `nftables` table (`ROOT_TABLE`, family `inet`) with these rules:
 
 | Chain | Policy | Rules |
 | --- | --- | --- |
 | `input` | drop | **ONLY** accept established and related connections |
 | `forward` | drop | None, the namespace never routes |
-| `output` | accept | Drop everything going to `lo`, accept the IPs listed in `dns` (IPv4 and IPv6), drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
+| `output` | accept | Drop everything going to `lo`, accept the IPs listed in `dns` (IPv4 and IPv6) on port 53, accept the exceptions listed in `network.exceptions`, drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
 
-| `network` | passt/pasta | Firewall |
+| `network.mode` | passt/pasta | Firewall |
 | --- | --- | --- |
 | `Restricted` (default) | Started | Installed as described above |
 | `Unrestricted` | Started | None |
 | `None` | Not started, the VMM gets no NIC | - |
 
+The rules are added in the order shown, and the first matching rule in the `output` chain wins.
+That is why the `dns` and `network.exceptions` accept rules sit between the `lo` drop and the
+drops for the local ranges: they punch holes into the blocked ranges, but never into loopback.
+Each exception becomes one rule for a network (a single address is a `/32` or `/128`) and an optional
+destination port. Hostnames are resolved when the firewall is installed, so the sandbox sees the addresses
+they had at start time. Duplicate entries are merged into a single rule.
+
 ### Shares and file ownership
 
 [virtiofsd](https://gitlab.com/virtio-fs/virtiofsd) is used to share host directories into the sandbox.
 One instance is spawned per configured share, exposing that share's `host_dir` to the sandbox over `virtio-fs`.
-Shares are read-write by default unless you set `ro` via the command line or set the `read_only` field to `true` in the config file.
 
 `virtiofsd` is also told to squash every sandbox `UID` and `GID` onto the user that created / started the sandbox.
 The sandbox cannot express any ownership on the host beyond what that user already has.
 In the other direction (host to sandbox) every host `UID` and `GID` shows up in the sandbox as `sandbox_user_uid` / `sandbox_user_gid` (`1000` by default).
 
-`read_only_paths` and `hidden_paths` are an additional mechanism to limit what a sandbox can see in a share. They work on subpaths inside the share instead of the whole share.
+`read_only_paths` and `hidden_paths` are an additional mechanism to limit what a sandbox can see in a share.
+They work on subpaths inside the share instead of the whole share.
 Both are implemented with mount namespaces on the host.
 This means that a read-only or hidden file or directory in the sandbox is genuinely read-only or hidden on the host too.
 To be precise, they are read-only / hidden in the created mount namespace of the `virtiofsd` process.
-
-Before `virtiofsd` is started, `blinools` unshares a fresh user, mount and network
-namespace for it and makes `/` private and recursive, so none of these mounts are visible outside
-that one process:
 
 - Paths in `read_only_paths` are bind-mounted onto themselves and remounted read-only, leaving the
   rest of the share writable. This is only done when the share itself isn't already read-only.

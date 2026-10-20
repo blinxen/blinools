@@ -28,7 +28,7 @@ pub enum RootfsType {
 
 #[derive(PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub enum NetworkKind {
+pub enum NetworkMode {
     None,
     Unrestricted,
     #[default]
@@ -142,7 +142,7 @@ pub struct FsShare {
 pub struct Network {
     #[garde(skip)]
     #[serde(default)]
-    pub kind: NetworkKind,
+    pub mode: NetworkMode,
     #[garde(dive)]
     #[serde(default)]
     pub exceptions: Vec<NetworkException>,

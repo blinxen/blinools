@@ -12,9 +12,11 @@ is deleted.
 .SH NETWORKING
 Restricted is the default network mode. Outgoing public internet connections
 are allowed, while access to loopback, private, CGNAT, link-local and IPv6
-unique-local ranges is blocked. Configured DNS servers are exceptions to that
-block. Unrestricted also permits local-network destinations. None disables
-networking. No incoming ports are forwarded in either enabled mode.
+unique-local ranges is blocked. Configured DNS servers, limited to port 53, and
+the exceptions listed in network.exceptions are exceptions to that block.
+Loopback cannot be made an exception. Unrestricted also permits local-network
+destinations. None disables networking. No incoming ports are forwarded in
+either enabled mode.
 .SH GIT INTEGRATION
 Before mounting a share, blinools scans for .git entries without following
 symlinks. ReadOnly is the default action and mounts them read-only.
