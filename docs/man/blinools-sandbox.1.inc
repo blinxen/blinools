@@ -11,7 +11,7 @@ the mount directory. Writes to shares change host files and survive sandbox
 deletion. The base image and host share directories are kept when a sandbox
 is deleted.
 .SH NETWORKING
-Networking currently uses IPv4 only. Restricted is the default mode and allows
+Restricted is the default mode and allows
 outgoing public internet connections while blocking local network destinations.
 Configured DNS addresses get an automatic exemption on port 53. Other ports
 follow the normal destination rules. network.exceptions allows additional

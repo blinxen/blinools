@@ -58,8 +58,7 @@ Allowed characters are:
 - `memory_mb` (integer, required): Guest memory in MiB. The accepted range is from 512 to 131072.
 - `cpus` (integer, required): Number of guest CPUs. The accepted range is from 1 to 255.
 - `network` (table): Controls what the sandbox can reach on the network. See [Network](#network).
-- `dns` (array of strings): DNS server addresses advertised to the guest. The parser accepts
-  IPv4 and IPv6 addresses, but networking currently runs in IPv4 only mode, so use IPv4 servers.
+- `dns` (array of strings): IPv4 or IPv6 DNS server addresses advertised to the guest.
   See [Network](#network) for how these addresses interact with the firewall.
 - `git_action` (enum): How existing `.git` entries inside shares are exposed.
   - `"ReadOnly"` (the default): Mount the entries read-only. Working tree access follows the share's normal settings.
@@ -98,13 +97,13 @@ The `network` table has the following options:
 
 - `mode` (enum):
   - `"Restricted"` (the default): Allow outgoing public internet connections. Block
-    loopback, private, CGNAT and link-local destinations, with the DNS and destination
+    loopback, private, CGNAT, link-local and IPv6 unique-local destinations, with the DNS and destination
     exceptions described below.
   - `"Unrestricted"`: Allow outgoing connections to public and local network destinations.
     Host loopback and gateway mappings remain disabled.
   - `"None"`: Disable networking.
 
-  Enabled modes currently use IPv4 only. ICMP and incoming port forwarding are disabled.
+  ICMP and incoming port forwarding are disabled in both enabled modes.
   In `Restricted` mode, each configured `dns` address gets an automatic exemption on
   destination port 53. Other ports follow the normal destination rules: public addresses
   remain reachable, and an explicit exception can allow other ports on a blocked address.

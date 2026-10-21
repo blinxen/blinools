@@ -40,7 +40,6 @@ impl Pasta {
                 "--pid",
                 &pid_path.display().to_string(),
                 "--foreground",
-                "-4",
                 "--no-icmp",
                 "--no-map-gw",
                 "--map-host-loopback",

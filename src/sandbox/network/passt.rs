@@ -51,7 +51,6 @@ impl Passt {
                 "--repair-path",
                 "none",
                 "--foreground",
-                "-4",
                 "--no-icmp",
                 "--no-map-gw",
                 "--map-host-loopback",

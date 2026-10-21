@@ -59,7 +59,7 @@ With systemd in the guest, shares are mounted at /mnt/NAME. Other init systems c
 
 # NETWORKING
 
-Networking currently uses IPv4 only. Restricted is the default mode and allows outgoing public internet connections while blocking local network destinations. Configured DNS addresses get an automatic exemption on port 53. Other ports follow the normal destination rules. network.exceptions allows additional destinations and optional ports. Unrestricted also permits local network destinations. None disables networking. ICMP, incoming port forwarding, and host loopback and gateway mappings are disabled in both enabled modes. See [blinools.toml(5)](../configuration.md) for the mode and exception settings.
+Restricted is the default mode and allows outgoing public internet connections while blocking local network destinations. Configured DNS addresses get an automatic exemption on port 53. Other ports follow the normal destination rules. network.exceptions allows additional destinations and optional ports. Unrestricted also permits local network destinations. None disables networking. ICMP, incoming port forwarding, and host loopback and gateway mappings are disabled in both enabled modes. See [blinools.toml(5)](../configuration.md) for the mode and exception settings.
 
 # GIT INTEGRATION
 

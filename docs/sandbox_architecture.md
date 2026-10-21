@@ -99,8 +99,7 @@ With networking enabled, two programs cooperate:
 2. pasta starts in the host namespaces and attaches to passt's network namespace.
    It configures that namespace and forwards outgoing traffic to the host network.
 
-Both programs currently run with `-4` (IPv4 only), using guest address
-`10.200.0.2/24` and gateway `10.200.0.1`. The configured `dns` addresses are passed
+The guest IPv4 address is `10.200.0.2/24`, with gateway `10.200.0.1`. The configured `dns` addresses are passed
 to both programs. With `network.mode = "None"`, neither program is started and
 the VMM receives no NIC.
 
@@ -116,7 +115,7 @@ and before passt executes. `Unrestricted` mode skips the firewall.
 
 The first matching output rule wins. DNS and destination exceptions are evaluated
 before the blocked address ranges and after the loopback-interface drop.
-The rules include IPv6 address matches even though the current network setup is IPv4 only.
+The firewall rules cover both IPv4 and IPv6 destinations.
 
 Each exception produces an accept rule for a network and, optionally, a destination
 port. A single address becomes a `/32` or `/128` network. Hostnames are resolved
