@@ -15,7 +15,7 @@ Run blinxen's command-line utilities.
 **-c**, **--config** *\<FILE\>*  
 Use FILE as the project configuration.
 
-This replaces ./blinools.toml. The global configuration still applies.
+This replaces ./blinools.toml. The global configuration is read first.
 
 **-v**, **--verbose**  
 Increase logging verbosity
@@ -45,7 +45,7 @@ Generate shell completion registration scripts
 
 # CONFIGURATION
 
-blinools reads a global configuration file, then ./blinools.toml. Both are optional. Use **-c FILE** or **--config FILE** to select a different project file. See [blinools.toml(5)](../configuration.md) for the options and for how the files are combined.
+Sandbox commands read a global configuration file, then ./blinools.toml. Both are optional. Use **-c FILE** or **--config FILE** to select a different project file. See [blinools.toml(5)](../configuration.md) for the options and for how the files are combined.
 
 # FILES
 

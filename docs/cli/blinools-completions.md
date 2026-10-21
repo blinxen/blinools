@@ -17,7 +17,7 @@ Source the output in the selected shell to enable dynamic completion.
 **-c**, **--config** *\<FILE\>*  
 Use FILE as the project configuration.
 
-This replaces ./blinools.toml. The global configuration still applies.
+This replaces ./blinools.toml. The global configuration is read first.
 
 **-v**, **--verbose**  
 Increase logging verbosity

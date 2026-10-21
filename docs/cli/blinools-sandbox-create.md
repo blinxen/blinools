@@ -10,7 +10,7 @@ blinools-sandbox-create - Create and start a sandbox
 
 Create and start a sandbox.
 
-Stays attached to the console until the guest shuts down. Reuse a stopped sandbox's rootfs overlay unless --recreate is passed.
+The command stays attached to the console until the guest shuts down. It reuses a stopped sandbox's rootfs overlay unless --recreate is passed.
 
 # OPTIONS
 
@@ -33,12 +33,12 @@ Mount all shares read-only, overriding the configuration
 **-c**, **--config** *\<FILE\>*  
 Use FILE as the project configuration.
 
-This replaces ./blinools.toml. The global configuration still applies.
+This replaces ./blinools.toml. The global configuration is read first.
 
 **--no-hidden**  
 Disable hidden-path masking.
 
-Other read-only restrictions still apply.
+Access to these paths depends on read_only, read_only_paths, git_action and host permissions.
 
 **--hidden-as-read-only**  
 Expose hidden paths as read-only instead of masking them

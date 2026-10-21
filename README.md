@@ -18,20 +18,19 @@ Run `blinools --help` or `blinools <command> --help` for the options of each com
 
 Tagged releases are built for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`.
 Download the archive for your architecture and `SHA256SUMS` from [Releases](../../releases),
-then verify and unpack them:
+then verify the downloaded archive and unpack it:
 
 ```bash
-sha256sum -c SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
 tar xzf blinools-<version>-<target>.tar.gz
 ```
 
 The archive contains the `blinools` binary, `LICENSE`, `README.md`, `CHANGELOG.md` and the man pages in
 `man/man1` and `man/man5`. Copy the binary to a directory in your `PATH` and the man pages to a
-directory in your `MANPATH`, for example `~/.local/bin` and `~/.local/share/man`.
+directory searched by `man`. For example, install the binary in `~/.local/bin` and copy
+`man/man1` and `man/man5` into `~/.local/share/man`.
 
 ### Build from source
-
-You need a Rust toolchain that supports edition 2024 (Rust 1.85 or newer).
 
 ```bash
 git clone https://github.com/blinxen/blinools.git
@@ -85,16 +84,18 @@ The full documentation is split into multiple files:
 
 You need:
 
-- A Rust toolchain (edition 2024) with `rustfmt` and `clippy`.
+- A current stable Rust toolchain with `rustfmt` and `clippy` (see [Build from source](#build-from-source)).
 - [just](https://github.com/casey/just).
-- `pandoc`, which generates the manpages.
+- `pandoc`, which generates the configuration man page and converts command man pages to Markdown.
 - `mandoc`, which lints the generated pages.
 
 Run `just check` before you push.
-It generates the man pages (including the cli docs), checks the formatting, runs clippy and all tests.
+It generates and lints the man pages, checks that the generated CLI reference is up to date,
+checks formatting, runs Clippy and runs all tests.
 
-Tests run on a single thread, which `.cargo/config.toml` enforces. Don't override it, because the
-processes are created with a raw `clone3` and a child can deadlock on an allocator lock held by another test thread.
+Tests run on a single thread, as configured in `.cargo/config.toml`.
+The reason for this is because we use the raw `clone3` system call
+and running tests concurrently can deadlock a child on an allocator lock held by another test thread.
 
 ## License
 

@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/var/cache/libdnf5,sharing=locked \
         golang
 
 # ========================================================================== #
-# Sytem configuration                                                        #
+# System configuration                                                        #
 # ========================================================================== #
 RUN ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime && \
     systemd-hwdb update && \

@@ -1,8 +1,9 @@
 .SH STORAGE
-The rootfs image is a read-only base. Guest changes are saved in an overlay
-that survives shutdown. The create command reuses it. The \fB\-\-recreate\fR
-option discards it and starts from the base image. Deleting or pruning a sandbox
-removes its saved state.
+The rootfs image is a read-only base. Changes to the guest root disk are saved
+in an overlay that survives shutdown. The create command reuses it on the next
+boot. Memory and running processes are not restored. The \fB\-\-recreate\fR option
+discards the overlay and starts from the base image. Deleting or pruning a sandbox
+removes its saved disk changes.
 .PP
 With systemd in the guest, shares are mounted at /mnt/NAME. Other init systems
 can mount them with \fBmount \-t virtiofs NAME /mnt/NAME\fR after creating
@@ -10,21 +11,24 @@ the mount directory. Writes to shares change host files and survive sandbox
 deletion. The base image and host share directories are kept when a sandbox
 is deleted.
 .SH NETWORKING
-Restricted is the default network mode. Outgoing public internet connections
-are allowed, while access to loopback, private, CGNAT, link-local and IPv6
-unique-local ranges is blocked. Configured DNS servers, limited to port 53, and
-the exceptions listed in network.exceptions are exceptions to that block.
-Loopback cannot be made an exception. Unrestricted also permits local-network
-destinations. None disables networking. No incoming ports are forwarded in
-either enabled mode.
+Networking currently uses IPv4 only. Restricted is the default mode and allows
+outgoing public internet connections while blocking local network destinations.
+Configured DNS addresses get an automatic exemption on port 53. Other ports
+follow the normal destination rules. network.exceptions allows additional
+destinations and optional ports. Unrestricted also permits local network destinations.
+None disables networking. ICMP, incoming port forwarding, and host loopback and
+gateway mappings are disabled in both enabled modes. See \fBblinools.toml\fR(5)
+for the mode and exception settings.
 .SH GIT INTEGRATION
-Before mounting a share, blinools scans for .git entries without following
-symlinks. ReadOnly is the default action and mounts them read-only.
-Hide replaces them with empty, read-only entries. None leaves them as they are.
-A share's git_action overrides [sandbox].git_action.
+Before serving a share, blinools scans for .git entries without following
+symlinks. ReadOnly is the default action and mounts them read-only, leaving
+the working tree writable. Hide covers them with empty, read-only entries.
+None skips this step. See \fBblinools.toml\fR(5) for git_action and per-share settings.
 .PP
-The scan is not repeated while the sandbox is running, so new .git entries
-are not covered. Whole-share and per-path restrictions still apply.
+The scan runs once at startup. Later .git entries use the share's normal access
+settings. A worktree's .git pointer file is handled, but its target metadata
+directory is not followed. A target outside the shares may be unavailable while
+a target exposed by another share uses that share's access settings.
 .SH SHUTDOWN
 The shutdown command stops the VM through its hypervisor API. To let the guest
 operating system shut down cleanly, run poweroff inside the guest.

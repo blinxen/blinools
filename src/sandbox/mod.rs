@@ -42,8 +42,8 @@ pub enum Command {
     Ps,
     /// Create and start a sandbox.
     ///
-    /// Stays attached to the console until the guest shuts down.
-    /// Reuse a stopped sandbox's rootfs overlay unless --recreate is passed.
+    /// The command stays attached to the console until the guest shuts down.
+    /// It reuses a stopped sandbox's rootfs overlay unless --recreate is passed.
     #[command(
         after_long_help = "Examples:\n  blinools sandbox create work\n  blinools sandbox create work --share .\n  blinools sandbox create work --share source:.:ro\n  blinools sandbox create work --recreate --delete-after-shutdown"
     )]
@@ -76,7 +76,8 @@ pub enum Command {
         read_only: bool,
         /// Disable hidden-path masking.
         ///
-        /// Other read-only restrictions still apply.
+        /// Access to these paths depends on read_only, read_only_paths, git_action
+        /// and host permissions.
         #[arg(long = "no-hidden", default_value_t = false)]
         no_hidden: bool,
         /// Expose hidden paths as read-only instead of masking them.

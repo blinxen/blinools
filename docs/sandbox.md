@@ -23,7 +23,10 @@ see [configuration.md](configuration.md).
 - `nft` from [nftables](https://netfilter.org/projects/nftables/), for the default `Restricted` network mode.
   For `network.mode = "Unrestricted"` and `"None"`, this is not needed.
 - A Linux kernel and a root filesystem image that suit the hypervisor.
-  A distribution kernel also works, you don't have to compile your own.
+  blinools boots without an initramfs, with the root filesystem on `/dev/vda`.
+  The kernel needs built-in drivers for virtio block devices, the root filesystem
+  and the virtio console. Sharing also needs virtio-fs support. A distribution kernel
+  works if it includes the required drivers rather than relying on initramfs modules.
 
 On Fedora, for QEMU:
 
@@ -53,16 +56,18 @@ blinools sandbox create work
 ```
 
 The command stays attached to the sandbox console until the sandbox shuts down.
-To shutdown the sandbox from the outside run this from another terminal:
+To stop the sandbox from the host, run this in another terminal:
 
 ```bash
 blinools sandbox shutdown work
 ```
 
-Shutting down the sandbox from the outside goes through the hypervisor and doesn't guarantee a clean shutdown of the sandbox.
-Therefore it is always advised to shutdown the sandbox from the inside using `poweroff` or a similar command.
-A stopped sandbox with the same name is started again with its saved state.
-If you want a clean start then pass `--recreate` to the `create` command.
+This stops the VM through the hypervisor API. For a clean operating-system shutdown,
+run `poweroff` inside the guest instead.
+
+Creating a stopped sandbox with the same name boots it using its saved rootfs overlay.
+Memory and running processes are not restored. Pass `--recreate` to discard the overlay
+and boot from the base image.
 
 A sandbox name has to be unique among the running sandboxes.
 `create` fails if a sandbox with that name is already running.
@@ -86,23 +91,24 @@ cd ../..
 blinools sandbox create work
 ```
 
-The scripts download and compile the linux kernel and build a Fedora root filesystem with Podman.
+The scripts download and compile the Linux kernel and build a Fedora root filesystem with Podman.
 The `blinools.toml` in the repository already points to these images.
 Check the binary paths and the DNS setting before you use it.
 
 | Example | Description |
 | --- | --- |
 | [`examples/basic`](../examples/basic) | A minimal Fedora rootfs with systemd, networking, development tools and an auto-login user. |
-| [`examples/ai-agent`](../examples/ai-agent) | A Fedora rootfs with Claude Code, OpenCode and Codex. The `agent` user is a unprivileged user may only run `poweroff` with sudo. Shares are automatically mounted into its home directory. |
+| [`examples/ai-agent`](../examples/ai-agent) | A Fedora rootfs with Claude Code, OpenCode and Codex. The `agent` user is unprivileged and can run only `poweroff` with sudo. Shares are automatically mounted into its home directory. |
 
 ## Commands
 
-Checkout [blinools-sandbox.md](cli/blinools-sandbox.md) for a complete documentation on all sandbox specific commands.
+See the [sandbox command reference](cli/blinools-sandbox.md) for all commands and options.
 
 ## Networking
 
-The `network` option and what each mode allows are described in [sandbox_architecture.md](sandbox_architecture.md#networking).
-The option itself is listed under [Network](configuration.md#network) in the configuration reference.
+See [Network](configuration.md#network) in the configuration reference for modes,
+DNS settings and destination exceptions. [Networking](sandbox_architecture.md#networking)
+in the architecture guide explains the implementation.
 
 If the sandbox only needs a few local IPs, then use the `Restricted` mode and add them as exceptions
 instead of switching to `Unrestricted`. An exception is an address, a range or a hostname, and can be
@@ -122,22 +128,14 @@ port = 8080
 ip_or_range_or_hostname = "100.64.0.0/10"
 ```
 
-DNS servers from the `dns` option are always limited to port 53 and don't need an exception.
-
 ## Git integration
 
-How `.git` directories and worktree files inside shares are handled is described in
-[sandbox_architecture.md](sandbox_architecture.md#git-integration).
-The `git_action` setting is listed under [Options](configuration.md#options)
-and [Shares](configuration.md#shares) in the configuration reference.
+The [configuration reference](configuration.md#options) defines the `git_action` values.
+The default, `ReadOnly`, protects existing `.git` entries while leaving the working tree
+writable. For scanning and worktree limitations, see
+[Git integration](sandbox_architecture.md#git-integration).
 
-Which action to pick:
-
-- `ReadOnly` (the default) when the sandbox should see the repository but not change it.
-- `Hide` when it should only see the working tree and not the history.
-- `None` when it needs full access to the repository, for example to commit.
-
-`git_action` in `[sandbox]` is the default for all shares, and a share can override it:
+A share can override the sandbox default, for example when a coding task needs to commit:
 
 ```toml
 [sandbox]

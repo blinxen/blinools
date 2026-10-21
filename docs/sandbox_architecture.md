@@ -1,177 +1,173 @@
 # Sandbox Architecture
 
 This document describes how sandboxes are built.
+For setup and usage, see the [sandbox guide](sandbox.md) and
+for option values see the [configuration reference](configuration.md).
 
 ## Architecture
 
-Each sandbox is a Linux microVM. `blinools sandbox create` acts as an orchestrator.
-It spawns a small set of helper processes and wires them
-together over local Unix sockets, then hands control of the VMs console to
-your terminal.
+Each sandbox is a Linux microVM. `blinools sandbox create` starts the virtual
+machine monitor (VMM) and helper processes, connects them over local Unix sockets,
+and attaches the VM's console to your terminal through an escape sequence filter.
 
 ```mermaid
-flowchart LR
-    CLI["blinools sandbox create"] -->|spawns| VMM["qemu-system-x86_64 or cloud-hypervisor (VMM)"]
-    CLI -->|spawns| PASST["passt (networking)"]
-    CLI -->|spawns| PASTA["pasta (host side of the network)"]
-    CLI -->|spawns, 1 per share| VFSD["virtiofsd"]
+flowchart TD
+    CLI["blinools sandbox create"] -->|spawns| VMM["QEMU or Cloud Hypervisor"]
+    CLI -->|spawns| PASST["passt"]
+    CLI -->|spawns| PASTA["pasta"]
+    CLI -->|spawns, one per share| VFSD["virtiofsd"]
 
     PASST <-->|vhost-user socket| VMM
     VFSD <-->|virtio-fs socket| VMM
-    VMM -->|KVM| VM["microVM: kernel + rootfs"]
+    VMM -->|KVM| VM["microVM: kernel and rootfs"]
 
     VMM <-->|pty| FILTER["escape sequence filter"]
-    FILTER <--> TERM(("your terminal"))
+    FILTER <--> TERM["your terminal"]
 
     PASTA <-->|joins passt's network namespace| PASST
-    PASTA -->|NAT via 10.200.0.2/24| NET(("host network"))
-    VFSD -.->|mounted at /mnt/name| VM
+    PASTA -->|outgoing traffic| NET["host network"]
+    VFSD -.->|mounted at /mnt/NAME| VM
 ```
 
-- **VMM**: [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`) is the VMM by
-  default (`hypervisor = "Qemu"`). [Cloud
-  Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) can be
-  used instead with `hypervisor = "CloudHypervisor"`. The chosen VMM boots
-  your configured `kernel` against a disk built from `rootfs`, using KVM for
-  hardware virtualization, and is controlled over a local socket (QEMU QMP
-  socket, or Cloud Hypervisor API socket).
-- **[passt](https://passt.top) and pasta**: Provide user-mode networking over a vhost-user socket.
-  The sandbox always gets the static address `10.200.0.2/24` with gateway `10.200.0.1`, NAT'd out to the hosts network.
-  Except the network mode is `None`, then nothing is set.
-  Custom DNS servers can be pushed to the sandbox via the `dns` config option.
-  The `network` table decides how much of the host network the sandbox can reach,
-  see [Networking](#networking).
-- **[virtiofsd](https://gitlab.com/virtio-fs/virtiofsd)**: Creates one instance per
-  configured share and exposes a host directory to the sandbox over virtio-fs.
-  Each share is mounted automatically at boot at `/mnt/<name>` via a kernel
-  command line option, so nothing needs to run inside the sandbox to pick it up.
-  The automatic mounting only happens if you are using `systemd`.
-- **Disk overlay**: `rootfs` is treated as a read-only backing image and is
-  never modified. On the first run, `blinools` creates a writable qcow2 overlay in
-  the sandboxs [state directory](#on-disk-layout). All writes made inside
-  the sandbox land in that overlay and persist across restarts.
-- **Process isolation**: The VMM and every helper process are started in their own set of Linux
-  namespaces, see [Process isolation](#process-isolation).
-- **Resource confinement**: Linux cgroups v2 is used to limit CPU, memory, and pids
-  for the VMM and its helper processes (passt, pasta, virtiofsd). CPU is capped to
-  the configured `cpus`, memory to `memory_mb` plus a 256 MB overhead with
-  swap disabled, and pids to `1024`. This currently only works if
-  `user.slice/user-<uid>.slice/user@<uid>.service` already exists under
-  `/sys/fs/cgroup` (created by systemd when your user session starts) and
-  `blinools` can create a `blinools.slice` subgroup under it.
-  Processes are started directly inside the cgroup (`CLONE_INTO_CGROUP`) instead of moving
-  themselves into it after they started.
-- **Console filter**: The sandbox console is not attached to your terminal directly. `blinools` puts a
-  pty in between and filters what the sandbox writes, see
-  [Console and your terminal](#console-and-your-terminal).
-- The kernel command line is always prefixed with
-  `console=hvc0 root=/dev/vda rw systemd.hostname=<name>`.
-  `console` and `root` can't be overridden via `kernel_cmdline`.
+| Component | Role | Details |
+| --- | --- | --- |
+| VMM | Boots the guest using KVM and exposes a local control API | [Boot and storage](#boot-and-storage) |
+| passt and pasta | Connect the guest to the host network | [Networking](#networking) |
+| virtiofsd | Exposes one host directory per process | [Shares and file ownership](#shares-and-file-ownership) |
+| Console filter | Relays terminal input and filters guest output | [Console and your terminal](#console-and-your-terminal) |
+
+### Boot and storage
+
+[QEMU](https://www.qemu.org/) (`qemu-system-x86_64`) is the default VMM.
+[Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) is the alternative.
+blinools controls them through a QEMU QMP socket or a Cloud Hypervisor API socket.
+
+The VMM boots the configured `kernel` with a writable qcow2 overlay backed by
+`rootfs`. The base image is read-only. The overlay is created on the first run
+in the sandbox's [state directory](#on-disk-layout) and reused on subsequent boots.
+It preserves writes to the guest root disk, not memory or running processes.
+Writes to shared directories affect host files, writes to guest tmpfs are temporary.
+
+The kernel command line starts with
+`console=hvc0 root=/dev/vda rw systemd.hostname=<name>`, followed by `kernel_cmdline`
+and any share mount instructions.
+The configuration reference describes the [accepted kernel arguments](configuration.md#options).
 
 ### Console and your terminal
 
-The sandbox gets a real terminal, and you get a normal shell, but the two are not wired straight
-together. `blinools` allocates a pty, gives the hypervisor the slave side and keeps the master, then
-filters problematic escape sequences on their way to your terminal emulator.
+blinools allocates a pseudoterminal (pty), gives the hypervisor the slave side and
+keeps the master. It filters problematic escape sequences from guest output before
+forwarding it to your terminal emulator.
 
-Keyboard signals such as `Ctrl-C` are not interpreted by the hypervisor, they are passed on to the
-guest.
+Keyboard signals such as `Ctrl-C` are passed to the guest.
 
 ### Process isolation
 
-All processes `blinools` starts go through the same code path.
-A process is created using the `clone3` system call and does the following configurations (before the actual binary is executed):
+The VMM, passt and each virtiofsd process are created with `clone3`. Before executing
+the binary, blinools sets up:
 
-- fresh **user, mount, network, PID, IPC, UTS and time namespaces**.
-  The caller's `UID`/`GID` is mapped to `0` inside the user namespace, `setgroups` is denied.
-- a **private mount tree** (`/` is made recursively private) with a freshly mounted `/proc` (`nosuid,nodev,noexec`).
-- a **new cgroup namespace**, which hides the cgroup root from the process.
-- placement **directly into the sandbox cgroup** (see [Resource confinement](#resource-confinement)).
+- Fresh **user, mount, network, PID, IPC, UTS and time namespaces**. The caller's
+  UID and GID map to `0` in the user namespace, with `setgroups` disabled.
+- A **private mount tree**: `/` is recursively private, and a fresh `/proc` is
+  mounted with `nosuid,nodev,noexec`.
+- A **new cgroup namespace**, which limits the process's view of the cgroup hierarchy.
+
+pasta uses the same process launcher with namespace creation disabled. It needs
+access to the host network and joins passt's network namespace to connect the two.
+
+### Resource confinement
+
+When cgroup setup succeeds, the VMM and helpers (passt, pasta and virtiofsd) start
+directly in the sandbox cgroup using `CLONE_INTO_CGROUP`. cgroups v2 limits their
+combined CPU usage to `cpus`, memory to `memory_mb` MiB plus 256 MiB of overhead,
+and the number of tasks to 1024. Swap is disabled for the group.
+
+This requires an existing
+`/sys/fs/cgroup/user.slice/user-<uid>.slice/user@<uid>.service` and permission to
+create a `blinools.slice` subgroup, enable its CPU, memory and PID controllers,
+and write the limits. If setup fails, the sandbox continues without these cgroup
+limits. The VMM still receives the configured guest CPU count and memory size.
 
 ### Networking
 
-Unless `network.mode = "None"` is configured, a sandbox gets its network from two cooperating programs:
+See [Network](configuration.md#network) for modes, DNS settings and exceptions.
+With networking enabled, two programs cooperate:
 
-1. `passt` is stared in its **own network namespace** (see [Process isolation](#process-isolation))
-   and serves the sandbox NIC over a vhost-user socket. It is not allowed to listen on any host port
-   (port forwarding is disabled), `ICMP` is disabled and the host loopback and gateway mappings are off.
-2. `pasta` is started without any namespaces and attaches to the network namespace of `passt`.
-   It connects that namespace to the real host network and NATs the sandbox traffic out.
+1. [passt](https://passt.top) serves the guest NIC over a vhost-user socket from
+   its own network namespace. Host port forwarding, ICMP, and host loopback and
+   gateway mappings are disabled.
+2. pasta starts in the host namespaces and attaches to passt's network namespace.
+   It configures that namespace and forwards outgoing traffic to the host network.
 
-Because `passt` runs in a separate network namespace, the firewall for the `Restricted` mode is installed
-**inside that namespace** right before `passt` is executed.
-It is an `nftables` table (`ROOT_TABLE`, family `inet`) with these rules:
+Both programs currently run with `-4` (IPv4 only), using guest address
+`10.200.0.2/24` and gateway `10.200.0.1`. The configured `dns` addresses are passed
+to both programs. With `network.mode = "None"`, neither program is started and
+the VMM receives no NIC.
 
-| Chain | Policy | Rules |
+In `Restricted` mode, blinools installs an nftables table (`ROOT_TABLE`, family
+`inet`) **inside passt's network namespace**, after pasta configures networking
+and before passt executes. `Unrestricted` mode skips the firewall.
+
+| Chain | Policy | Rules, in evaluation order |
 | --- | --- | --- |
-| `input` | drop | **ONLY** accept established and related connections |
-| `forward` | drop | None, the namespace never routes |
-| `output` | accept | Drop everything going to `lo`, accept the IPs listed in `dns` (IPv4 and IPv6) on port 53, accept the exceptions listed in `network.exceptions`, drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
+| `input` | drop | Accept established and related connections |
+| `forward` | drop | No rules, the namespace does not route packets |
+| `output` | accept | Drop traffic to `lo`, accept configured DNS addresses on port 53, accept `network.exceptions`, drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
 
-| `network.mode` | passt/pasta | Firewall |
-| --- | --- | --- |
-| `Restricted` (default) | Started | Installed as described above |
-| `Unrestricted` | Started | None |
-| `None` | Not started, the VMM gets no NIC | - |
+The first matching output rule wins. DNS and destination exceptions are evaluated
+before the blocked address ranges and after the loopback-interface drop.
+The rules include IPv6 address matches even though the current network setup is IPv4 only.
 
-The rules are added in the order shown, and the first matching rule in the `output` chain wins.
-That is why the `dns` and `network.exceptions` accept rules sit between the `lo` drop and the
-drops for the local ranges: they punch holes into the blocked ranges, but never into loopback.
-Each exception becomes one rule for a network (a single address is a `/32` or `/128`) and an optional
-destination port. Hostnames are resolved when the firewall is installed, so the sandbox sees the addresses
-they had at start time. Duplicate entries are merged into a single rule.
+Each exception produces an accept rule for a network and, optionally, a destination
+port. A single address becomes a `/32` or `/128` network. Hostnames are resolved
+when the firewall is installed. Identical network-and-port entries are deduplicated.
 
 ### Shares and file ownership
 
-[virtiofsd](https://gitlab.com/virtio-fs/virtiofsd) is used to share host directories into the sandbox.
-One instance is spawned per configured share, exposing that share's `host_dir` to the sandbox over `virtio-fs`.
+[virtiofsd](https://gitlab.com/virtio-fs/virtiofsd) exposes each share's `host_dir`
+over virtio-fs. Guest systemd processes the `systemd.mount-extra=` kernel arguments
+to mount shares at `/mnt/NAME`. Other init systems need an explicit mount, see
+[Shares](configuration.md#shares).
 
-`virtiofsd` is also told to squash every sandbox `UID` and `GID` onto the user that created / started the sandbox.
-The sandbox cannot express any ownership on the host beyond what that user already has.
-In the other direction (host to sandbox) every host `UID` and `GID` shows up in the sandbox as `sandbox_user_uid` / `sandbox_user_gid` (`1000` by default).
+Operations on shared files use the host user's UID and GID. In the guest, host
+files appear with `sandbox_user_uid` and `sandbox_user_gid` (both 1000 by default).
 
-`read_only_paths` and `hidden_paths` are an additional mechanism to limit what a sandbox can see in a share.
-They work on subpaths inside the share instead of the whole share.
-Both are implemented with mount namespaces on the host.
-This means that a read-only or hidden file or directory in the sandbox is genuinely read-only or hidden on the host too.
-To be precise, they are read-only / hidden in the created mount namespace of the `virtiofsd` process.
+Access settings are implemented in virtiofsd's private mount namespace.
+The host's normal view of the original files is unchanged:
 
-- Paths in `read_only_paths` are bind-mounted onto themselves and remounted read-only, leaving the
-  rest of the share writable. This is only done when the share itself isn't already read-only.
-  If it is already configured read-only, then the whole `host_dir` gets bind-mounted onto itself and then remounted as read-only.
-- Paths in `hidden_paths` are replaced but not actually removed / replaced.
-  A directory gets covered with an empty, read-only `tmpfs`.
-  A file gets bind-mounted over itself with an empty file.
-  The paths still exist and are still visible to the sandbox, they are just empty.
+- For a read-only share, `host_dir` is bind-mounted onto itself and remounted read-only.
+- Otherwise, each `read_only_paths` entry is bind-mounted onto itself and remounted read-only.
+- Each `hidden_paths` directory is covered with an empty, read-only tmpfs. Each file
+  is covered with a read-only bind mount of an empty file.
+  The paths remain visible in the guest, with their original contents masked.
 
-Some command line flags of `sandbox create` change what happens to these paths for a single run:
-
-- `--read-only` mounts every share read-only, the same way a share with `read_only = true` is handled.
-- `--no-hidden` skips `hidden_paths` entirely, hidden paths stay read-write.
-- `--hidden-as-read-only` mounts `hidden_paths` read-only instead of hiding them.
+The [command-line overrides](configuration.md#command-line-overrides) change these
+settings for an individual run.
 
 ### Git integration
 
-The [configuration reference](configuration.md#options) documents `git_action`.
+The [configuration reference](configuration.md#options) defines `git_action` and
+[per-share overrides](configuration.md#shares).
 
-#### Git actions
+Before virtiofsd serves a share, blinools walks its directory tree without following
+symlinks and looks for `.git` entries. `ReadOnly` uses read-only bind mounts, `Hide`
+uses the same empty-file or tmpfs mounts as `hidden_paths` and `None` skips this step.
+The scan runs once, so `.git` entries created later are exposed according to the
+share's normal access settings. The working tree remains writable unless the
+share or relevant paths are read-only.
 
-Using the same mount namespace mechanism as `read_only_paths` and `hidden_paths`, `blinools` walks every share
-(without following symlinks) and looks for entries named `.git`. This covers both repositories (a directory) and
-worktrees (a file). What happens to them is controlled by `git_action`, which can be set globally and per share
-(the per share value wins):
-
-- `ReadOnly` (default): the `.git` directory or file is bind-mounted onto itself and remounted read-only.
-- `Hide`: a `.git` directory is covered with an empty read-only `tmpfs`, a `.git` file is replaced by an empty file.
-- `None`: nothing is done.
-
-The walk happens once, in the `virtiofsd` process before it starts serving the share. A `.git` that is created
-inside the share afterwards is not covered.
+For a linked worktree, `.git` is a pointer file. blinools handles that file but does
+not follow its target to protect or expose the metadata directory. If the target
+is outside the shared directories, Git commands in the guest may fail because the
+metadata is unavailable. If it is reachable through another share, its access is
+determined by that share's settings and any `.git` entry found during its own scan.
 
 ### On-disk layout
 
 | Path | Contents | Lifetime |
 | --- | --- | --- |
-| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Hypervisor control socket (QEMU QMP socket or Cloud Hypervisor API socket), passt socket, pasta pid file, virtiofsd sockets, log files (`passt.log`, `pasta.log`, `vfsd-<share>.log`, ...) | While the sandbox is running, cleaned up on shutdown / delete |
-| `$XDG_RUNTIME_DIR/blinools/<name>.lock` | Empty file, locked while blinools works on that sandbox | Until the sandbox is shutdown |
-| `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | The qcow2 disk overlay holding everything written inside the guest | Persists across restarts, until `sandbox delete` or `--recreate` or `--delete-after-shutdown` |
+| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Hypervisor control socket, passt socket, pasta PID file, virtiofsd sockets and logs (`passt.log`, `pasta.log`, `vfsd-<share>.log`) | On normal shutdown, helpers cleanup removes sockets and the PID file. The directory and logs remain until deletion or pruning. |
+| `$XDG_RUNTIME_DIR/blinools/<name>.lock` | Empty lock file used while an operation holds the sandbox lock | Removed when the holder exits normally, a crash can leave an unlocked file |
+| `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | qcow2 overlay storing changes to the guest root disk | Persists across boots, deletion or pruning removes it, and `--recreate` replaces it |
+
+`--delete-after-shutdown` deletes the sandbox after the attached create command finishes.

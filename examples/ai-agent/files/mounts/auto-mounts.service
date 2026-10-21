@@ -9,8 +9,8 @@ Before=systemd-user-sessions.service serial-getty@hvc0.service getty.target
 Type=oneshot
 RemainAfterExit=yes
 EnvironmentFile=-/etc/default/agent-mounts
-ExecStart=/usr/local/bin/bind-agent-mounts.sh mount
-ExecStop=/usr/local/bin/bind-agent-mounts.sh umount
+ExecStart=/usr/local/bin/auto-mounts.sh mount
+ExecStop=/usr/local/bin/auto-mounts.sh umount
 
 [Install]
 WantedBy=multi-user.target

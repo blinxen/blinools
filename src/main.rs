@@ -22,7 +22,7 @@ struct Cli {
 
     /// Use FILE as the project configuration.
     ///
-    /// This replaces ./blinools.toml. The global configuration still applies.
+    /// This replaces ./blinools.toml. The global configuration is read first.
     #[arg(short = 'c', long = "config", global = true, value_name = "FILE")]
     config_file: Option<String>,
 

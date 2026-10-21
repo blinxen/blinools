@@ -1,5 +1,5 @@
 .SH CONFIGURATION
-blinools reads a global configuration file, then ./blinools.toml. Both are optional.
+Sandbox commands read a global configuration file, then ./blinools.toml. Both are optional.
 Use \fB\-c FILE\fR or \fB\-\-config FILE\fR to select a different project file.
 See \fBblinools.toml\fR(5) for the options and for how the files are combined.
 .SH FILES

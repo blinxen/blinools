@@ -119,7 +119,7 @@ jobs:
             ### Verification
             Verify your download with the SHA256SUMS file:
             ```bash
-            sha256sum -c SHA256SUMS
+            sha256sum --ignore-missing -c SHA256SUMS
             ```
 
-            See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+            See [CHANGELOG.md](https://github.com/blinxen/blinools/blob/${{ github.ref_name }}/CHANGELOG.md) for detailed changes.

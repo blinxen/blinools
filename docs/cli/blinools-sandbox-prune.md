@@ -17,7 +17,7 @@ Asks for confirmation before deleting saved state.
 **-c**, **--config** *\<FILE\>*  
 Use FILE as the project configuration.
 
-This replaces ./blinools.toml. The global configuration still applies.
+This replaces ./blinools.toml. The global configuration is read first.
 
 **-v**, **--verbose**  
 Increase logging verbosity
