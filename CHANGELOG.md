@@ -1,20 +1,32 @@
 # Changelog for `blinools`
 
-## Unreleased
+## 0.4.0
 
 ### Breaking changes
 
 * The `network` option is now a table with `mode` and `exceptions` instead of a string. Replace `network = "Unrestricted"` with `network = { mode = "Unrestricted" }`. `mode` accepts the same values as before and still defaults to `Restricted`.
-* In `Restricted` mode the servers configured in `dns` are now only reachable on port 53. Before, every port on them was allowed.
+* Limit automatic DNS-server firewall exemptions in `Restricted` mode to destination port 53. Previously, these exemptions allowed every port. Access to other ports follows the normal destination rules and explicit `network.exceptions`.
+* Set the minimum supported Rust version to 1.91 in `Cargo.toml`.
 
 ### Added
 
-* Add `network.exceptions` to keep individual destinations reachable in `Restricted` mode although they are in a blocked range. An exception is an IP address, a CIDR range or a hostname, optionally limited to one port. Hostnames are resolved when the sandbox starts.
-* Add manual pages for every command (`blinools(1)`, `blinools-sandbox(1)`, ...) and for the configuration file (`blinools.toml(5)`). They are generated with `just man` and included in the release archives under `man/man1` and `man/man5`.
+* Add `network.exceptions` to allow individual destinations in blocked ranges in `Restricted` mode. An exception is an IPv4 or IPv6 address, a CIDR range or a hostname, optionally limited to one destination port. Hostnames are resolved when the sandbox starts; duplicate network-and-port entries are merged.
+* Add man pages for every command and for the configuration file. Release archives include the pages under `man/man1` and `man/man5`.
+* Add a browser readable CLI reference in `docs/cli`, generated from the command man pages.
 
 ### Changed
 
-* Split the documentation into `docs/configuration.md`, `docs/sandbox.md` and `docs/sandbox_architecture.md`, and slim down the README. The documentation is now regular Markdown that can be read in the browser.
+* Remove the IPv4-only `-4` flag from passt and pasta so they can use IPv6 as well as IPv4.
+* Split the documentation into `docs/configuration.md`, `docs/sandbox.md` and `docs/sandbox_architecture.md`, and shorten the README.
+* Expand CLI help with examples and more precise option descriptions. Document `wip-pr` as not implemented.
+* Update both example root filesystems from Fedora 44 to Fedora 45.
+* Point both examples at the shared `misc/kernel/kernel.config`, selecting the Linux 7.2.11 configuration used by the build script.
+
+### Fixed
+
+* Fix the AI agent example's Dockerfile and systemd unit to use the supplied `auto-mounts.sh` and `auto-mounts.service` files, allowing the image to build and its share mounting service to start.
+* Fix checksum verification instructions for users who download only one architecture's archive by ignoring missing archives listed in `SHA256SUMS`.
+* Link release notes to the changelog at the release tag.
 
 ## 0.3.0
 
