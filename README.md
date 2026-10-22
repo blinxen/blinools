@@ -14,6 +14,13 @@ Run `blinools --help` or `blinools <command> --help` for the options of each com
 
 ## Installation
 
+Fedora:
+
+```bash
+dnf copr enable blinxen/tools
+dnf install blinools
+```
+
 ### Prebuilt binaries
 
 Tagged releases are built for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`.
