@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::create_dir;
+use crate::sandbox::name::Name;
 
 #[derive(Debug)]
 pub struct CGroup {
@@ -40,6 +41,16 @@ impl CGroup {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    pub fn from_existing(name: &Name) -> Option<Self> {
+        let base = maybe_init_base_group()?;
+        let path = base.join(name);
+        if path.exists() {
+            Some(Self { path })
+        } else {
+            None
+        }
+    }
 }
 
 fn maybe_init_base_group() -> Option<PathBuf> {
@@ -49,7 +60,9 @@ fn maybe_init_base_group() -> Option<PathBuf> {
         uid = uid
     ));
 
-    create_dir(&path).ok()?;
+    if !path.exists() {
+        create_dir(&path).ok()?;
+    }
 
     Some(path)
 }

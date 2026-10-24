@@ -148,7 +148,6 @@ impl FsMount {
         })
     }
 
-
     pub fn disown(&mut self) {
         // Write the pid of the child process into a file so we can use it in stop_share function
         if let Some(pid) = self.process.pid() {

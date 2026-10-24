@@ -344,7 +344,13 @@ fn attach_share(
         no_hidden: false,
         hidden_as_read_only: false,
     };
-    let mut mount = FsMount::spawn(&config, &share, None, &overrides, true)?;
+    let mut mount = FsMount::spawn(
+        &config,
+        &share,
+        CGroup::from_existing(&config.name).as_ref(),
+        &overrides,
+        true,
+    )?;
     hypervisor
         .attach_fs(&sandbox_runtime_dir, &mount.tag, &mount.socket_path)
         .with_context(|| {
