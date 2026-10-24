@@ -17,16 +17,20 @@ use std::{
 
 use anyhow::Context;
 use clap::Subcommand;
-use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
+use clap_complete::{
+    PathCompleter,
+    engine::{ArgValueCompleter, CompletionCandidate},
+};
+use garde::Validate;
 use tabled::{Table, Tabled};
 
 use crate::{
     config::{create_dir, runtime_dir, state_dir},
     sandbox::{
         cgroup::CGroup,
-        config::{CliOverrides, FsShare},
+        config::{CliOverrides, FsShare, GitAction},
         console::{Console, ConsoleExit},
-        fs::FsMount,
+        fs::{FsMount, share_pid_path, share_socket_path},
         hypervisor::VmConfig,
         lock::SandboxLock,
         name::Name,
@@ -83,6 +87,51 @@ pub enum Command {
         /// Expose hidden paths as read-only instead of masking them.
         #[arg(long = "hidden-as-read-only", default_value_t = false)]
         hidden_as_read_only: bool,
+    },
+    /// Attach a share to a running sandbox.
+    ///
+    /// The share is not mounted automatically.
+    /// You will be given the required command to run in the sandbox to mount the share.
+    #[command(
+        after_long_help = "Examples:\n  blinools sandbox attach-share work ./data\n  blinools sandbox attach-share work notes:./notes:ro\n  blinools sandbox attach-share work ./src --hidden-path ./src/.env --git-action hide\n  blinools sandbox attach-share work ./src --read-only-path ./src/vendor"
+    )]
+    AttachShare {
+        /// Specify the name of the running sandbox.
+        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        name: Name,
+        /// Specify the path to the share.
+        ///
+        /// Supported forms are PATH, PATH:rw, PATH:ro, NAME:PATH:rw and NAME:PATH:ro.
+        /// The share is read-write by default. An unnamed share takes its name from the
+        /// directory. The name is the virtio-fs tag the guest mounts.
+        /// Paths are relative to the working directory and cannot contain colons.
+        #[arg(value_name = "SHARE", value_parser = config::parse_share, add = ArgValueCompleter::new(PathCompleter::dir()))]
+        share: FsShare,
+        /// Expose a path inside the share as read-only.
+        ///
+        /// This option can be repeated. It has no effect on a read-only share.
+        #[arg(long = "read-only-path", value_name = "PATH", value_parser = config::parse_existing_path, add = ArgValueCompleter::new(PathCompleter::dir()))]
+        read_only_paths: Vec<PathBuf>,
+        /// Mask a path inside the share.
+        ///
+        /// This option can be repeated. Directories appear empty and files are replaced by an empty file.
+        #[arg(long = "hidden-path", value_name = "PATH", value_parser = config::parse_existing_path, add = ArgValueCompleter::new(PathCompleter::dir()))]
+        hidden_paths: Vec<PathBuf>,
+        /// Specify how the sandbox sees `.git` directories in the share.
+        ///
+        /// This overrides the git_action from the configuration for this share.
+        #[arg(long = "git-action", value_enum)]
+        git_action: Option<GitAction>,
+    },
+    /// Detach a share from a running sandbox.
+    #[command(after_long_help = "Examples:\n  blinools sandbox detach-share work data")]
+    DetachShare {
+        /// Specify the name of the running sandbox.
+        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        name: Name,
+        /// Specify the name of the share.
+        #[arg(add = ArgValueCompleter::new(PathCompleter::dir()))]
+        share: Name,
     },
     /// Stop a sandbox through its hypervisor.
     ///
@@ -149,6 +198,32 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
                 },
             )?;
         }
+        Command::AttachShare {
+            name,
+            share,
+            read_only_paths,
+            hidden_paths,
+            git_action,
+        } => {
+            let share = FsShare {
+                read_only_paths,
+                hidden_paths,
+                git_action,
+                ..share
+            };
+            attach_share(
+                config.context("the configuration has no `sandbox` section")?,
+                name,
+                share,
+            )?;
+        }
+        Command::DetachShare { name, share } => {
+            detach_share(
+                config.context("the configuration has no `sandbox` section")?,
+                name,
+                share,
+            )?;
+        }
         Command::Shutdown { name, force } => {
             let sandbox_runtime_dir = runtime_dir().join(&name);
             hypervisor::for_sandbox(config.as_ref(), &sandbox_runtime_dir)
@@ -193,7 +268,13 @@ fn create_sandbox(
         }
         let mut mounts = Vec::new();
         for share in &shares {
-            mounts.push(FsMount::spawn(&config, share, cgroup.as_ref(), &overrides)?);
+            mounts.push(FsMount::spawn(
+                &config,
+                share,
+                cgroup.as_ref(),
+                &overrides,
+                false,
+            )?);
         }
 
         let mut console = Console::new()?;
@@ -225,6 +306,86 @@ fn create_sandbox(
     if delete_after_shutdown {
         delete_sandbox(Some(&config), &config.name, true)?;
     }
+
+    Ok(())
+}
+
+fn attach_share(
+    mut config: config::Config,
+    name: Name,
+    share: FsShare,
+) -> Result<(), anyhow::Error> {
+    let sandbox_runtime_dir = runtime_dir().join(&name);
+    let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
+    if hypervisor.flavor() == config::Hypervisor::Qemu {
+        eprintln!("Qemu does not support attaching shares while the sandbox is running");
+        return Ok(());
+    }
+    if !hypervisor.is_running(&sandbox_runtime_dir) {
+        anyhow::bail!("sandbox `{name}` is not running");
+    }
+
+    share
+        .validate()
+        .map_err(|report| anyhow::anyhow!("invalid share: {report}"))?;
+
+    config.name = name;
+    validate_socket_path_lengths(&config.name, std::slice::from_ref(&share))?;
+    if share_socket_path(&config.name, &share.name).exists() {
+        anyhow::bail!(
+            "the sandbox `{}` already has a share named `{}`, use a different name",
+            config.name,
+            share.name
+        );
+    }
+
+    let overrides = CliOverrides {
+        read_only: false,
+        no_hidden: false,
+        hidden_as_read_only: false,
+    };
+    let mut mount = FsMount::spawn(&config, &share, None, &overrides, true)?;
+    hypervisor
+        .attach_fs(&sandbox_runtime_dir, &mount.tag, &mount.socket_path)
+        .with_context(|| {
+            format!(
+                "attaching `{}` to `{}`",
+                share.host_dir.display(),
+                config.name
+            )
+        })?;
+    mount.disown();
+
+    println!("Share has been added to the sandbox.");
+    println!(
+        "You can now mount it in the sandbox using: mount -t virtiofs {} /some/path",
+        mount.tag
+    );
+
+    Ok(())
+}
+
+fn detach_share(config: config::Config, name: Name, share: Name) -> Result<(), anyhow::Error> {
+    let sandbox_runtime_dir = runtime_dir().join(&name);
+    let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
+    if hypervisor.flavor() == config::Hypervisor::Qemu {
+        eprintln!("Qemu does not support detaching shares while the sandbox is running");
+        return Ok(());
+    }
+    if !hypervisor.is_running(&sandbox_runtime_dir) {
+        anyhow::bail!("sandbox `{name}` is not running");
+    }
+
+    hypervisor
+        .detach_fs(&sandbox_runtime_dir, &share)
+        .context("detaching share")?;
+
+    crate::sandbox::fs::stop_share(&name, &share);
+    process::remove_stale_socket(&share_socket_path(&name, &share));
+    process::remove_stale_socket(&share_pid_path(&name, &share));
+
+    println!("The share has been detached, accessing it in the sandbox fails from now on.");
+    println!("Remove the mount in the sandbox using: umount -l <mount point>");
 
     Ok(())
 }
@@ -361,7 +522,7 @@ fn complete_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
 fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), anyhow::Error> {
     let mut paths = vec![socket_path(name, "passt")];
     for share in shares {
-        paths.push(socket_path(name, &format!("vfsd-{}", share.name)));
+        paths.push(share_socket_path(name, &share.name));
     }
 
     for path in hypervisor::socket_paths_to_validate() {

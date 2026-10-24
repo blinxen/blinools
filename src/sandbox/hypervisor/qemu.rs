@@ -11,6 +11,7 @@ use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
     Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
 };
+use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
@@ -45,6 +46,10 @@ struct QmpStatus {
 }
 
 impl Hypervisor for Qemu {
+    fn flavor(&self) -> crate::sandbox::config::Hypervisor {
+        crate::sandbox::config::Hypervisor::Qemu
+    }
+
     fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
         let mut mount_args = Vec::new();
         let cmdline = guest_cmdline(&cfg);
@@ -187,6 +192,14 @@ impl Hypervisor for Qemu {
             },
             Err(_) => State::Unknown,
         }
+    }
+
+    fn attach_fs(&self, _: &Path, _: &Name, _: &Path) -> Result<(), anyhow::Error> {
+        unreachable!("qemu does not support attaching a share on a running sandbox");
+    }
+
+    fn detach_fs(&self, _: &Path, _: &Name) -> Result<(), anyhow::Error> {
+        unreachable!("qemu does not support detaching a share from a running sandbox");
     }
 }
 

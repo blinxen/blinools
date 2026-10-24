@@ -36,6 +36,12 @@ List all sandboxes and their state
 [blinools-sandbox-create(1)](blinools-sandbox-create.md)  
 Create and start a sandbox
 
+[blinools-sandbox-attach-share(1)](blinools-sandbox-attach-share.md)  
+Attach a share to a running sandbox
+
+[blinools-sandbox-detach-share(1)](blinools-sandbox-detach-share.md)  
+Detach a share from a running sandbox
+
 [blinools-sandbox-shutdown(1)](blinools-sandbox-shutdown.md)  
 Stop a sandbox through its hypervisor
 
@@ -73,4 +79,4 @@ The shutdown command stops the VM through its hypervisor API. To let the guest o
 
 # SEE ALSO
 
-[blinools(1)](blinools.md), [blinools-sandbox-create(1)](blinools-sandbox-create.md), [blinools-sandbox-delete(1)](blinools-sandbox-delete.md), [blinools-sandbox-prune(1)](blinools-sandbox-prune.md), [blinools-sandbox-ps(1)](blinools-sandbox-ps.md), [blinools-sandbox-shutdown(1)](blinools-sandbox-shutdown.md), [blinools.toml(5)](../configuration.md)
+[blinools(1)](blinools.md), [blinools-sandbox-attach-share(1)](blinools-sandbox-attach-share.md), [blinools-sandbox-create(1)](blinools-sandbox-create.md), [blinools-sandbox-delete(1)](blinools-sandbox-delete.md), [blinools-sandbox-detach-share(1)](blinools-sandbox-detach-share.md), [blinools-sandbox-prune(1)](blinools-sandbox-prune.md), [blinools-sandbox-ps(1)](blinools-sandbox-ps.md), [blinools-sandbox-shutdown(1)](blinools-sandbox-shutdown.md), [blinools.toml(5)](../configuration.md)

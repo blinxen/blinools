@@ -56,6 +56,7 @@ pub struct Process {
     // Needed for cleanup since we need to differentiate between parent and child
     // pid can't be used here because in the case of a failed exec, we don't had pid set
     is_child: bool,
+    kill_with_parent: bool,
 }
 
 impl Process {
@@ -74,6 +75,7 @@ impl Process {
             status: None,
             pach: None,
             is_child: false,
+            kill_with_parent: true,
         }
     }
 
@@ -125,6 +127,19 @@ impl Process {
     pub fn remove_on_drop(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.files_to_remove.push(path.as_ref().to_path_buf());
         self
+    }
+
+    pub fn kill_with_parent(&mut self, kill: bool) -> &mut Self {
+        self.kill_with_parent = kill;
+        self
+    }
+
+    /// Give up ownership of the child.
+    /// Drop will neither kill it nor delete the files registered with `remove_on_drop`.
+    /// Used for processes that must outlive blinools.
+    pub fn disown(&mut self) {
+        self.pid = None;
+        self.files_to_remove.clear();
     }
 
     pub fn pid(&self) -> Option<u32> {
@@ -353,7 +368,7 @@ impl Process {
             // When the parent dies (in this case it is blinools) then we should make sure
             // that the child is terminated as well.
             // TODO: Is it OK to use SIGKILL?
-            if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+            if self.kill_with_parent && libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
                 return Err(io::Error::last_os_error()).context("setting parent death signal");
             }
         }
@@ -631,5 +646,26 @@ mod tests {
         assert!(drop_started.elapsed() < PROCESS_TERMINATE_TIMEOUT);
         assert!(!should_get_deleted.exists());
         assert_ne!(unsafe { libc::kill(pid, 0) }, 0);
+    }
+
+    #[test]
+    fn a_disowned_process_survives_drop_and_keeps_its_files() {
+        let dir = tempdir().unwrap();
+        let should_stay = dir.path().join("socket");
+        std::fs::write(&should_stay, "").unwrap();
+        let mut process = sh("sleep 30");
+        process.no_namespaces().remove_on_drop(&should_stay);
+        process.spawn().unwrap();
+        let pid = process.pid().unwrap() as libc::pid_t;
+
+        process.disown();
+        drop(process);
+
+        assert!(should_stay.exists());
+        assert_eq!(unsafe { libc::kill(pid, 0) }, 0);
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+            libc::waitpid(pid, std::ptr::null_mut(), 0);
+        }
     }
 }

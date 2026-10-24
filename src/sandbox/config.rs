@@ -35,12 +35,15 @@ pub enum NetworkMode {
     Restricted,
 }
 
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Default, Clone, clap::ValueEnum)]
 #[serde(deny_unknown_fields)]
 pub enum GitAction {
+    /// Leave `.git` directories untouched.
     None,
+    /// Expose `.git` directories read-only.
     #[default]
     ReadOnly,
+    /// Hide `.git` directories from the sandbox.
     Hide,
 }
 
@@ -299,6 +302,11 @@ pub fn merge_by_name(base: Option<&Vec<FsShare>>, overrides: Vec<FsShare>) -> Ve
     shares.sort_by(|a, b| a.name.cmp(&b.name));
 
     shares
+}
+
+// Used only by clap parser
+pub fn parse_existing_path(s: &str) -> Result<PathBuf, String> {
+    std::fs::canonicalize(s).map_err(|error| format!("could not make `{s}` absolute: {error}"))
 }
 
 // Used only by clap parser

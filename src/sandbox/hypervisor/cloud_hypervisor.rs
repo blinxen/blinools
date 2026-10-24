@@ -6,11 +6,14 @@ use std::time::Duration;
 
 use anyhow::Context;
 use serde::Deserialize;
+use serde_json::json;
 
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
-    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
+    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, fs_device_id,
+    guest_cmdline,
 };
+use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
@@ -36,6 +39,10 @@ impl CloudHypervisor {
 }
 
 impl Hypervisor for CloudHypervisor {
+    fn flavor(&self) -> crate::sandbox::config::Hypervisor {
+        crate::sandbox::config::Hypervisor::CloudHypervisor
+    }
+
     fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
         let mut mounts: Vec<String> = Vec::new();
         let cmdline = guest_cmdline(&cfg);
@@ -150,6 +157,56 @@ impl Hypervisor for CloudHypervisor {
             _ => State::Unknown,
         }
     }
+
+    fn attach_fs(
+        &self,
+        sandbox_runtime_dir: &Path,
+        tag: &Name,
+        socket_path: &Path,
+    ) -> Result<(), anyhow::Error> {
+        let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
+        let body = json!({
+            "id": fs_device_id(tag),
+            "tag": tag.as_str(),
+            "socket": &socket_path.display().to_string(),
+            "num_queues": 1,
+            "queue_size": 512,
+        })
+        .to_string();
+        let response = api(&api_socket_path, "PUT", "vm.add-fs", Some(&body))
+            .context("requesting cloud hypervisor to attach the share")?;
+
+        if !response.success() {
+            let message = match response.status_code {
+                409 => "share is already attached to the sandbox",
+                _ => &response.body,
+            };
+            anyhow::bail!(
+                "cloud hypervisor refused to attach the share ({}): {}",
+                response.status_code,
+                message
+            );
+        }
+
+        Ok(())
+    }
+
+    fn detach_fs(&self, sandbox_runtime_dir: &Path, tag: &Name) -> Result<(), anyhow::Error> {
+        let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
+        let body = json!({ "id": fs_device_id(tag) }).to_string();
+        let response = api(&api_socket_path, "PUT", "vm.remove-device", Some(&body))
+            .context("requesting cloud hypervisor to detach the share")?;
+
+        if !response.success() {
+            anyhow::bail!(
+                "cloud hypervisor refused to detach the share ({}): {}",
+                response.status_code,
+                response.body
+            );
+        }
+
+        Ok(())
+    }
 }
 
 pub struct CloudHypervisorVm {
@@ -215,7 +272,10 @@ fn api_with_timeout(
     let mut request =
         format!("{method} /api/v1/{path} HTTP/1.1\r\nHost: localhost\r\nAccept: */*\r\n");
     if let Some(body) = body {
-        request.push_str(&format!("Content-Length: {}\r\n", body.len()));
+        request.push_str(&format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n",
+            body.len()
+        ));
     }
     request.push_str("\r\n");
     if let Some(body) = body {

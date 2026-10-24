@@ -56,6 +56,8 @@ pub trait Vm {
 }
 
 pub trait Hypervisor {
+    fn flavor(&self) -> config::Hypervisor;
+
     fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error>;
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool;
@@ -63,6 +65,19 @@ pub trait Hypervisor {
     fn shutdown(&self, sandbox_runtime_dir: &Path, force: bool) -> Result<(), anyhow::Error>;
 
     fn state(&self, sandbox_runtime_dir: &Path) -> State;
+
+    fn attach_fs(
+        &self,
+        sandbox_runtime_dir: &Path,
+        tag: &Name,
+        socket_path: &Path,
+    ) -> Result<(), anyhow::Error>;
+
+    fn detach_fs(&self, sandbox_runtime_dir: &Path, tag: &Name) -> Result<(), anyhow::Error>;
+}
+
+fn fs_device_id(tag: &Name) -> String {
+    format!("fs-{tag}")
 }
 
 pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {

@@ -98,4 +98,4 @@ blinools is licensed under GPL-3.0-or-later. See LICENSE for the full text.
 
 # SEE ALSO
 
-[blinools-completions(1)](blinools-completions.md), [blinools-sandbox(1)](blinools-sandbox.md), [blinools-sandbox-create(1)](blinools-sandbox-create.md), [blinools-sandbox-delete(1)](blinools-sandbox-delete.md), [blinools-sandbox-prune(1)](blinools-sandbox-prune.md), [blinools-sandbox-ps(1)](blinools-sandbox-ps.md), [blinools-sandbox-shutdown(1)](blinools-sandbox-shutdown.md), [blinools-wip-pr(1)](blinools-wip-pr.md), [blinools.toml(5)](../configuration.md)
+[blinools-completions(1)](blinools-completions.md), [blinools-sandbox(1)](blinools-sandbox.md), [blinools-sandbox-attach-share(1)](blinools-sandbox-attach-share.md), [blinools-sandbox-create(1)](blinools-sandbox-create.md), [blinools-sandbox-delete(1)](blinools-sandbox-delete.md), [blinools-sandbox-detach-share(1)](blinools-sandbox-detach-share.md), [blinools-sandbox-prune(1)](blinools-sandbox-prune.md), [blinools-sandbox-ps(1)](blinools-sandbox-ps.md), [blinools-sandbox-shutdown(1)](blinools-sandbox-shutdown.md), [blinools-wip-pr(1)](blinools-wip-pr.md), [blinools.toml(5)](../configuration.md)

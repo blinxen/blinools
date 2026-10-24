@@ -15,12 +15,39 @@ use crate::sandbox::socket_path;
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
 const VIRTIOFSD_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
+pub fn share_pid_path(sandbox_name: &Name, share_name: &Name) -> PathBuf {
+    share_socket_path(sandbox_name, share_name).with_extension("pid")
+}
+
+pub fn share_socket_path(sandbox_name: &Name, share_name: &Name) -> PathBuf {
+    socket_path(sandbox_name, &format!("vfsd-{}", share_name))
+}
+
+pub fn stop_share(sandbox_name: &Name, share_name: &Name) {
+    let socket = share_socket_path(sandbox_name, share_name);
+    let Some(pid) = std::fs::read_to_string(share_pid_path(sandbox_name, share_name))
+        .ok()
+        .and_then(|content| content.trim().parse::<libc::pid_t>().ok())
+    else {
+        log::warn!("no pid file for the virtiofsd of `{share_name}`, can't stop it");
+        return;
+    };
+    // We must be careful not to delete random process
+    // The PID file could be stale therefore we first check the cmdline file if it contains
+    // the socket path. Should be good enough to make sure it is our process.
+    let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+    if !String::from_utf8_lossy(&cmdline).contains(&*socket.to_string_lossy()) {
+        return;
+    }
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+}
+
 #[derive(Debug)]
 pub struct FsMount {
     pub tag: Name,
     pub socket_path: PathBuf,
     pub read_only: bool,
-    _process: Process,
+    process: Process,
 }
 
 impl FsMount {
@@ -29,8 +56,9 @@ impl FsMount {
         share: &FsShare,
         cgroup: Option<&CGroup>,
         overrides: &CliOverrides,
+        standalone: bool,
     ) -> Result<Self, anyhow::Error> {
-        let socket_path = socket_path(&config.name, &format!("vfsd-{}", share.name));
+        let socket_path = share_socket_path(&config.name, &share.name);
         remove_stale_socket(&socket_path);
         let mut binary_path = PathBuf::from("virtiofsd");
         if let Some(cfg) = &config.virtiofsd
@@ -75,6 +103,7 @@ impl FsMount {
         if share.read_only {
             process.arg("--readonly");
         }
+        process.kill_with_parent(!standalone);
         let log_file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -115,8 +144,17 @@ impl FsMount {
             tag: share.name.clone(),
             socket_path,
             read_only: share.read_only,
-            _process: process,
+            process,
         })
+    }
+
+
+    pub fn disown(&mut self) {
+        // Write the pid of the child process into a file so we can use it in stop_share function
+        if let Some(pid) = self.process.pid() {
+            let _ = std::fs::write(self.socket_path.with_extension("pid"), pid.to_string());
+        }
+        self.process.disown();
     }
 }
 

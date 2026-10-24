@@ -1,5 +1,12 @@
 # Changelog for `blinools`
 
+## Unreleased
+
+### Added
+
+* Add `sandbox attach-share` that allows to attach a share to a already running sandbox. This is limited to CloudHypervisor only for now.
+* Add `sandbox detach-share` that allows to detach a share from a already running sandbox. This is limited to CloudHypervisor only for now.
+
 ## 0.4.0
 
 ### Breaking changes
