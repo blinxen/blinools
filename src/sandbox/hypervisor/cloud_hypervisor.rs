@@ -178,6 +178,7 @@ impl Hypervisor for CloudHypervisor {
 
         if !response.success() {
             let message = match response.status_code {
+                404 => "sandbox does not exist",
                 409 => "share is already attached to the sandbox",
                 _ => &response.body,
             };
@@ -198,10 +199,15 @@ impl Hypervisor for CloudHypervisor {
             .context("requesting cloud hypervisor to detach the share")?;
 
         if !response.success() {
+            let message = match response.status_code {
+                404 => "share is not attached to the sandbox",
+                409 => "it is not possible to detach the share from the sandbox at this time",
+                _ => &response.body,
+            };
             anyhow::bail!(
                 "cloud hypervisor refused to detach the share ({}): {}",
                 response.status_code,
-                response.body
+                message
             );
         }
 
