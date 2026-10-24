@@ -1,7 +1,7 @@
 [sandbox]
 virtiofsd.binary = "/usr/libexec/virtiofsd"
 
-kernel = "./examples/ai-agent/kernel"
+kernel = "./misc/kernel/kernel"
 rootfs = "./examples/ai-agent/rootfs.img"
 memory_mb = 8192
 cpus = 4

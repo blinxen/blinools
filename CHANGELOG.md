@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+* Make CloudHypervisor the default hypervisor. The issue with qemu is that it doesn't support all usecases yet that we want to support. For example hotpluging shares.
+
 ### Added
 
 * Add `sandbox attach-share` that allows to attach a share to a already running sandbox. This is limited to CloudHypervisor only for now.
