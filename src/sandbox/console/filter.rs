@@ -8,6 +8,7 @@ const ANSI_ESC: u8 = 0x1B;
 // Page 18
 const ALLOWED_PRIVATE_MODES: &[u16] = &[
     1,  // application cursor keys
+    7,  // autowrap
     25, // cursor visibility
     47, 1047, 1049, // alternate screen buffer
     1000, 1002, 1003, 1004, 1005, 1006, 1015, // mouse tracking variants
@@ -17,6 +18,7 @@ const ALLOWED_PRIVATE_MODES: &[u16] = &[
 
 pub struct AnsiFilter {
     parser: Parser,
+    // Consecutive combining marks and joiners, reset by any other printed char
     combining_marker_count: usize,
     // Track sequence to prevent blocking too much here
     current_string_sequence_length: usize,
@@ -54,8 +56,9 @@ impl AnsiFilter {
                 .current_string_sequence_length
                 .saturating_add(input.len());
             if self.current_string_sequence_length > MAX_STRING_SEQUENCE {
-                // // Reset after an excessively long sequence
-                *self = Self::new();
+                // Stay in the rejected string until its terminator appears.
+                // Resetting the parser here would expose the rest of its payload as text.
+                self.current_string_sequence_length = MAX_STRING_SEQUENCE;
             }
         }
     }
@@ -112,15 +115,16 @@ impl<'a> FilterPerformer<'a> {
     }
 }
 
-// Device controlls are ignored
+// Device controls are ignored
 // Operating system commands are ignored -> this is very important since clipboard access lives here
 impl Perform for FilterPerformer<'_> {
     fn print(&mut self, character: char) {
-        if is_format_char(character) {
+        // This prevents invisible chars
+        if is_format_char(character) || is_hidden_data_char(character) {
             return;
         }
 
-        if is_combining_mark(character) {
+        if is_combining_mark(character) || is_joiner(character) {
             *self.combining_marker_count = self.combining_marker_count.saturating_add(1);
             if *self.combining_marker_count > COMBINING_MARKER_CONSECUTIVE_MAX {
                 // I can't see why we would need to support more
@@ -151,6 +155,19 @@ impl Perform for FilterPerformer<'_> {
         }
 
         match intermediates {
+            // DECRQM: Mode's state
+            [b'?', b'$']
+                if action == 'p'
+                    && params
+                        .iter()
+                        .all(|p| matches!(p, [mode] if ALLOWED_PRIVATE_MODES.contains(mode))) =>
+            {
+                self.write_csi(params, intermediates, action);
+            }
+            // DA2: terminal identification query
+            [b'>'] if action == 'c' && params.iter().eq([&[0][..]]) => {
+                self.write_csi(params, intermediates, action);
+            }
             // Just a action, check if we allow it
             [] => {
                 if allowed_csi(action, params) {
@@ -202,9 +219,23 @@ fn mode_numbers(params: &Params) -> impl Iterator<Item = u16> + '_ {
     params.iter().filter_map(|p| p.first().copied())
 }
 
-// This prevents invisible chars
+fn is_joiner(c: char) -> bool {
+    matches!(c, '\u{200c}' | '\u{200d}')
+}
+
 fn is_format_char(c: char) -> bool {
-    unicode_general_category::get_general_category(c) == GeneralCategory::Format
+    unicode_general_category::get_general_category(c) == GeneralCategory::Format && !is_joiner(c)
+}
+
+// Non-Cf characters commonly abused to hide data
+fn is_hidden_data_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{e0100}'
+            ..='\u{e01ef}'   // variation selectors supplement
+        | '\u{115f}' | '\u{1160}'   // Hangul choseong/jungseong fillers
+        | '\u{3164}' | '\u{ffa0}' // Hangul filler, halfwidth Hangul filler
+    )
 }
 
 // This prevents touching previous chars
@@ -220,6 +251,11 @@ fn is_combining_mark(c: char) -> bool {
 // Allow list for CSI actions
 fn allowed_csi(action: char, params: &Params) -> bool {
     match action {
+        // DA1: primary device attributes query
+        'c' => params.iter().eq([&[0][..]]),
+        // DSR: status / cursor position report
+        'n' => params.iter().eq([&[5][..]]) || params.iter().eq([&[6][..]]),
+
         // SGR: text styling and colors
         'm' => true,
 
@@ -239,6 +275,9 @@ fn allowed_csi(action: char, params: &Params) -> bool {
         'G' => true,
         // Cursor position
         'H' => true,
+
+        // Query character-cell dimensions in pixels
+        't' => params.iter().eq([&[16][..]]),
 
         // Keyboard/editing keys
         '~' => {
@@ -438,13 +477,13 @@ mod tests {
     }
 
     #[test]
-    fn recovers_from_an_unterminated_string() {
+    fn discards_an_overlong_string_until_its_terminator() {
         // Without a cap this would black out the console for the rest of the session
         let mut output = Vec::new();
         let mut escape_filter = AnsiFilter::new();
         escape_filter.filter(b"\x1b]", &mut output);
         escape_filter.filter(&[b'x'; MAX_STRING_SEQUENCE + 1], &mut output);
-        escape_filter.filter(b"ok", &mut output);
+        escape_filter.filter(b"still hidden\x07ok", &mut output);
         assert_eq!(output, b"ok");
     }
 
@@ -453,5 +492,43 @@ mod tests {
         // A guest killed mid sequence must not take the console with it
         assert_eq!(filter(b"\x1b]0;title\x18hello"), b"\x18hello");
         assert_eq!(filter(b"\x1b]0;title\x1ahello"), b"\x1ahello");
+    }
+
+    #[test]
+    fn drops_tag_character_payloads() {
+        let hidden: String = "secret"
+            .chars()
+            .map(|c| char::from_u32(0xE0000 + c as u32).unwrap())
+            .collect();
+        assert_eq!(filter(format!("a{hidden}b").as_bytes()), b"ab");
+    }
+
+    #[test]
+    fn flag_sequences_degrade_to_the_base_flag() {
+        let input = "🏴\u{e0067}\u{e0062}\u{e0065}\u{e006e}\u{e0067}\u{e007f}";
+        assert_eq!(filter(input.as_bytes()), "🏴".as_bytes());
+    }
+
+    #[test]
+    fn keeps_zwj_emoji_and_zwnj_text() {
+        let family = "👨\u{200d}👩\u{200d}👧";
+        assert_eq!(filter(family.as_bytes()), family.as_bytes());
+        let persian = "می\u{200c}خواهم";
+        assert_eq!(filter(persian.as_bytes()), persian.as_bytes());
+    }
+
+    #[test]
+    fn joiners_do_not_reset_the_combining_mark_limit() {
+        let input = format!(
+            "a{}",
+            "\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{301}\u{200d}".repeat(3)
+        );
+        let expected = format!("a{}", "\u{301}".repeat(COMBINING_MARKER_CONSECUTIVE_MAX));
+        assert_eq!(filter(input.as_bytes()), expected.as_bytes());
+    }
+
+    #[test]
+    fn drops_hangul_fillers_and_variation_selector_supplement() {
+        assert_eq!(filter("a\u{3164}\u{ffa0}\u{e0100}b".as_bytes()), b"ab");
     }
 }
