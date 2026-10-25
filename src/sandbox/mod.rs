@@ -352,7 +352,12 @@ fn attach_share(
         true,
     )?;
     hypervisor
-        .attach_fs(&sandbox_runtime_dir, &mount.tag, &mount.socket_path)
+        .attach_fs(
+            &config.name,
+            &sandbox_runtime_dir,
+            &mount.tag,
+            &mount.socket_path,
+        )
         .with_context(|| {
             format!(
                 "attaching `{}` to `{}`",
@@ -383,7 +388,7 @@ fn detach_share(config: config::Config, name: Name, share: Name) -> Result<(), a
     }
 
     hypervisor
-        .detach_fs(&sandbox_runtime_dir, &share)
+        .detach_fs(&config.name, &sandbox_runtime_dir, &share)
         .context("detaching share")?;
 
     crate::sandbox::fs::stop_share(&name, &share);

@@ -43,53 +43,54 @@ impl Hypervisor for CloudHypervisor {
         crate::sandbox::config::Hypervisor::CloudHypervisor
     }
 
-    fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
+    fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
         let mut mounts: Vec<String> = Vec::new();
-        let cmdline = guest_cmdline(&cfg);
+        let cmdline = guest_cmdline(&config);
 
-        for mount in cfg.mounts {
+        for mount in config.mounts {
             mounts.push("--fs".into());
             mounts.push(format!(
-                "tag={},socket={},num_queues=1,queue_size=512",
+                "id={},tag={},socket={},num_queues=1,queue_size=512",
+                fs_device_id(&config.name, &mount.tag),
                 mount.tag,
                 mount.socket_path.display()
             ));
         }
 
-        let api_socket = socket_path(cfg.name, SOCKET_NAME);
+        let api_socket = socket_path(config.name, SOCKET_NAME);
         remove_stale_socket(&api_socket);
         remove_stale_socket(&api_socket.with_added_extension("lock"));
-        let mut process = Process::new(&self.binary, cfg.cgroup);
+        let mut process = Process::new(&self.binary, config.cgroup);
         process
             .arg("--api-socket")
             .arg(&api_socket)
             .arg("--log-file")
             .arg(api_socket.with_extension("log"))
             .arg("--kernel")
-            .arg(cfg.kernel)
+            .arg(config.kernel)
             .arg("--seccomp")
             .arg("true")
             .arg("--landlock")
             .arg("--landlock-rules")
-            .arg(format!("path={},access=r", cfg.rootfs.display()))
+            .arg(format!("path={},access=r", config.rootfs.display()))
             .arg("--disk")
             .arg(format!(
                 "path={},image_type=qcow2,backing_files=on",
-                create_qcow2_overlay(&cfg)?.display()
+                create_qcow2_overlay(&config)?.display()
             ))
             .args(mounts)
             .arg("--cmdline")
             .arg(cmdline)
             .arg("--cpus")
-            .arg(format!("boot={}", cfg.cpus))
+            .arg(format!("boot={}", config.cpus))
             .arg("--memory")
-            .arg(format!("size={}M,shared=on", cfg.memory_mb))
+            .arg(format!("size={}M,shared=on", config.memory_mb))
             .arg("--serial")
             .arg("off")
             .arg("--console")
             .arg("tty");
 
-        if let Some(network_socket) = cfg.network_socket {
+        if let Some(network_socket) = config.network_socket {
             process.arg("--net").arg(format!(
                 "vhost_user=true,socket={}",
                 network_socket.display()
@@ -105,9 +106,9 @@ impl Hypervisor for CloudHypervisor {
         };
 
         process
-            .stdin(cfg.console.stdin)
-            .stdout(cfg.console.stdout)
-            .stderr(cfg.console.stderr)
+            .stdin(config.console.stdin)
+            .stdout(config.console.stdout)
+            .stderr(config.console.stderr)
             .remove_on_drop(&api_socket)
             .remove_on_drop(api_socket.with_added_extension("lock"));
 
@@ -160,13 +161,14 @@ impl Hypervisor for CloudHypervisor {
 
     fn attach_fs(
         &self,
+        sandbox_name: &Name,
         sandbox_runtime_dir: &Path,
         tag: &Name,
         socket_path: &Path,
     ) -> Result<(), anyhow::Error> {
         let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
         let body = json!({
-            "id": fs_device_id(tag),
+            "id": fs_device_id(sandbox_name, tag),
             "tag": tag.as_str(),
             "socket": &socket_path.display().to_string(),
             "num_queues": 1,
@@ -192,9 +194,14 @@ impl Hypervisor for CloudHypervisor {
         Ok(())
     }
 
-    fn detach_fs(&self, sandbox_runtime_dir: &Path, tag: &Name) -> Result<(), anyhow::Error> {
+    fn detach_fs(
+        &self,
+        sandbox_name: &Name,
+        sandbox_runtime_dir: &Path,
+        tag: &Name,
+    ) -> Result<(), anyhow::Error> {
         let api_socket_path = socket_path_in(sandbox_runtime_dir, SOCKET_NAME);
-        let body = json!({ "id": fs_device_id(tag) }).to_string();
+        let body = json!({ "id": fs_device_id(sandbox_name, tag) }).to_string();
         let response = api(&api_socket_path, "PUT", "vm.remove-device", Some(&body))
             .context("requesting cloud hypervisor to detach the share")?;
 

@@ -68,16 +68,22 @@ pub trait Hypervisor {
 
     fn attach_fs(
         &self,
+        sandbox_name: &Name,
         sandbox_runtime_dir: &Path,
         tag: &Name,
         socket_path: &Path,
     ) -> Result<(), anyhow::Error>;
 
-    fn detach_fs(&self, sandbox_runtime_dir: &Path, tag: &Name) -> Result<(), anyhow::Error>;
+    fn detach_fs(
+        &self,
+        sandbox_name: &Name,
+        sandbox_runtime_dir: &Path,
+        tag: &Name,
+    ) -> Result<(), anyhow::Error>;
 }
 
-fn fs_device_id(tag: &Name) -> String {
-    format!("fs-{tag}")
+fn fs_device_id(sandbox_name: &Name, tag: &Name) -> String {
+    format!("{sandbox_name}-{tag}")
 }
 
 pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {

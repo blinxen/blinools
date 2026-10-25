@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
-    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, guest_cmdline,
+    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, fs_device_id,
+    guest_cmdline,
 };
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
@@ -50,11 +51,11 @@ impl Hypervisor for Qemu {
         crate::sandbox::config::Hypervisor::Qemu
     }
 
-    fn boot(&self, cfg: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
+    fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
         let mut mount_args = Vec::new();
-        let cmdline = guest_cmdline(&cfg);
+        let cmdline = guest_cmdline(&config);
 
-        for mount in cfg.mounts {
+        for mount in config.mounts {
             mount_args.push("-chardev".into());
             mount_args.push(format!(
                 "socket,id=char-{tag},path={sock}",
@@ -63,17 +64,18 @@ impl Hypervisor for Qemu {
             ));
             mount_args.push("-device".into());
             mount_args.push(format!(
-                "vhost-user-fs-device,queue-size=512,chardev=char-{tag},tag={tag}",
+                "vhost-user-fs-device,id={id},queue-size=512,chardev=char-{tag},tag={tag}",
+                id = fs_device_id(config.name, &mount.tag),
                 tag = mount.tag
             ));
         }
 
-        let api_socket = socket_path(cfg.name, SOCKET_NAME);
+        let api_socket = socket_path(config.name, SOCKET_NAME);
         remove_stale_socket(&api_socket);
 
-        let overlay = create_qcow2_overlay(&cfg)?;
+        let overlay = create_qcow2_overlay(&config)?;
 
-        let mut process = Process::new(&self.binary, cfg.cgroup);
+        let mut process = Process::new(&self.binary, config.cgroup);
         process
             .arg("-machine")
             .arg(format!(
@@ -84,16 +86,16 @@ impl Hypervisor for Qemu {
             .arg("-cpu")
             .arg("host")
             .arg("-smp")
-            .arg(cfg.cpus.to_string())
+            .arg(config.cpus.to_string())
             .arg("-m")
-            .arg(format!("{}m", cfg.memory_mb))
+            .arg(format!("{}m", config.memory_mb))
             .arg("-object")
             .arg(format!(
                 "memory-backend-memfd,id={MEMORY_BACKEND},size={}M,share=on",
-                cfg.memory_mb
+                config.memory_mb
             ))
             .arg("-kernel")
-            .arg(cfg.kernel)
+            .arg(config.kernel)
             .arg("-append")
             .arg(cmdline)
             .arg("-nodefaults")
@@ -128,7 +130,7 @@ impl Hypervisor for Qemu {
             .arg("-global")
             .arg("virtio-mmio.force-legacy=false");
 
-        if let Some(network_socket) = cfg.network_socket {
+        if let Some(network_socket) = config.network_socket {
             process
                 .arg("-chardev")
                 .arg(format!(
@@ -148,9 +150,9 @@ impl Hypervisor for Qemu {
         }
 
         process
-            .stdin(cfg.console.stdin)
-            .stdout(cfg.console.stdout)
-            .stderr(cfg.console.stderr)
+            .stdin(config.console.stdin)
+            .stdout(config.console.stdout)
+            .stderr(config.console.stderr)
             .remove_on_drop(&api_socket);
 
         process.spawn().context("spawning qemu")?;
@@ -194,11 +196,11 @@ impl Hypervisor for Qemu {
         }
     }
 
-    fn attach_fs(&self, _: &Path, _: &Name, _: &Path) -> Result<(), anyhow::Error> {
+    fn attach_fs(&self, _: &Name, _: &Path, _: &Name, _: &Path) -> Result<(), anyhow::Error> {
         unreachable!("qemu does not support attaching a share on a running sandbox");
     }
 
-    fn detach_fs(&self, _: &Path, _: &Name) -> Result<(), anyhow::Error> {
+    fn detach_fs(&self, _: &Name, _: &Path, _: &Name) -> Result<(), anyhow::Error> {
         unreachable!("qemu does not support detaching a share from a running sandbox");
     }
 }
