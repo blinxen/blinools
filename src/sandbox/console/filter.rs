@@ -17,6 +17,7 @@ const ALLOWED_PRIVATE_MODES: &[u16] = &[
 
 pub struct AnsiFilter {
     parser: Parser,
+    combining_marker_count: usize,
     // Track sequence to prevent blocking too much here
     current_string_sequence_length: usize,
 }
@@ -31,6 +32,7 @@ impl AnsiFilter {
     pub fn new() -> Self {
         AnsiFilter {
             parser: Parser::new_with_size(),
+            combining_marker_count: 0,
             current_string_sequence_length: 0,
         }
     }
@@ -38,8 +40,10 @@ impl AnsiFilter {
     pub fn filter(&mut self, input: &[u8], output: &mut Vec<u8>) {
         let before = output.len();
         // Actual parsing here and the performer handles filtering
-        self.parser
-            .advance(&mut FilterPerformer::new(output), input);
+        self.parser.advance(
+            &mut FilterPerformer::new(output, &mut self.combining_marker_count),
+            input,
+        );
 
         if output.len() > before {
             // parser has written sequence and we are done
@@ -60,14 +64,14 @@ impl AnsiFilter {
 // TODO: Should we add a log mode to log what got filtered?
 struct FilterPerformer<'a> {
     output: &'a mut Vec<u8>,
-    combining_marker_count: usize,
+    combining_marker_count: &'a mut usize,
 }
 
 impl<'a> FilterPerformer<'a> {
-    pub fn new(output: &'a mut Vec<u8>) -> Self {
+    pub fn new(output: &'a mut Vec<u8>, combining_marker_count: &'a mut usize) -> Self {
         Self {
             output,
-            combining_marker_count: 0,
+            combining_marker_count,
         }
     }
 
@@ -117,13 +121,13 @@ impl Perform for FilterPerformer<'_> {
         }
 
         if is_combining_mark(character) {
-            self.combining_marker_count += 1;
-            if self.combining_marker_count > COMBINING_MARKER_CONSECUTIVE_MAX {
+            *self.combining_marker_count = self.combining_marker_count.saturating_add(1);
+            if *self.combining_marker_count > COMBINING_MARKER_CONSECUTIVE_MAX {
                 // I can't see why we would need to support more
                 return;
             }
         } else {
-            self.combining_marker_count = 0;
+            *self.combining_marker_count = 0;
         }
         // UTF-8  max bytes are 4
         let mut buffer = [0u8; 4];
