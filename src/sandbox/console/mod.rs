@@ -102,6 +102,12 @@ impl Console {
     }
 
     pub fn read_until_terminated(&mut self) -> Result<ConsoleExit, anyhow::Error> {
+        let result = self.forward_until_terminated();
+        self.restore_terminal();
+        result
+    }
+
+    fn forward_until_terminated(&mut self) -> Result<ConsoleExit, anyhow::Error> {
         // Make sure signals are handled properly
         self.signals_mask = Some(Signals::install_handlers_and_mask()?);
         // Put stdin in raw mode so we can let the guest do whatever he wants
@@ -245,15 +251,17 @@ impl Console {
             }
         }
     }
+
+    fn restore_terminal(&mut self) {
+        self.non_blocking.clear();
+        self.raw_mode.take();
+        self.signals_mask.take();
+    }
 }
 
 impl Drop for Console {
     fn drop(&mut self) {
-        // Blocking writes again, so the reset below cannot be lost to a full buffer
-        self.non_blocking.clear();
-        self.signals_mask.take();
-
-        self.raw_mode.take();
+        self.restore_terminal();
     }
 }
 
