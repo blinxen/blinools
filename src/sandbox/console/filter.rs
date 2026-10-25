@@ -22,6 +22,7 @@ pub struct AnsiFilter {
     combining_marker_count: usize,
     // Track sequence to prevent blocking too much here
     current_string_sequence_length: usize,
+    in_screen_title: bool,
 }
 
 impl Default for AnsiFilter {
@@ -36,6 +37,7 @@ impl AnsiFilter {
             parser: Parser::new_with_size(),
             combining_marker_count: 0,
             current_string_sequence_length: 0,
+            in_screen_title: false,
         }
     }
 
@@ -43,7 +45,11 @@ impl AnsiFilter {
         let before = output.len();
         // Actual parsing here and the performer handles filtering
         self.parser.advance(
-            &mut FilterPerformer::new(output, &mut self.combining_marker_count),
+            &mut FilterPerformer::new(
+                output,
+                &mut self.combining_marker_count,
+                &mut self.in_screen_title,
+            ),
             input,
         );
 
@@ -68,13 +74,19 @@ impl AnsiFilter {
 struct FilterPerformer<'a> {
     output: &'a mut Vec<u8>,
     combining_marker_count: &'a mut usize,
+    in_screen_title: &'a mut bool,
 }
 
 impl<'a> FilterPerformer<'a> {
-    pub fn new(output: &'a mut Vec<u8>, combining_marker_count: &'a mut usize) -> Self {
+    pub fn new(
+        output: &'a mut Vec<u8>,
+        combining_marker_count: &'a mut usize,
+        in_screen_title: &'a mut bool,
+    ) -> Self {
         Self {
             output,
             combining_marker_count,
+            in_screen_title,
         }
     }
 
@@ -119,6 +131,10 @@ impl<'a> FilterPerformer<'a> {
 // Operating system commands are ignored -> this is very important since clipboard access lives here
 impl Perform for FilterPerformer<'_> {
     fn print(&mut self, character: char) {
+        // Skip title
+        if *self.in_screen_title {
+            return;
+        }
         // This prevents invisible chars
         if is_format_char(character) || is_hidden_data_char(character) {
             return;
@@ -140,6 +156,10 @@ impl Perform for FilterPerformer<'_> {
     }
 
     fn execute(&mut self, byte: u8) {
+        // Check if the title is done, BEL, CAN, SUB end the title
+        if byte == 0x07 || byte == 0x18 || byte == 0x1A {
+            *self.in_screen_title = false;
+        }
         // Deny NUL sequence OR full C1 (apparently no keyboard can even emit this)
         if byte == 0x00 || (0x80..=0x9F).contains(&byte) {
             return;
@@ -202,9 +222,11 @@ impl Perform for FilterPerformer<'_> {
             return;
         }
 
-        // Only allow basic cursor movements
-        if allowed_esc(byte) {
-            self.output.extend_from_slice(&[ANSI_ESC, byte]);
+        match byte {
+            b'k' => *self.in_screen_title = true,   // ESC k starts a title
+            b'\\' => *self.in_screen_title = false, // ESC \ ends it
+            _ if allowed_esc(byte) => self.output.extend_from_slice(&[ANSI_ESC, byte]),
+            _ => {}
         }
     }
 
@@ -530,5 +552,11 @@ mod tests {
     #[test]
     fn drops_hangul_fillers_and_variation_selector_supplement() {
         assert_eq!(filter("a\u{3164}\u{ffa0}\u{e0100}b".as_bytes()), b"ab");
+    }
+    #[test]
+    fn drops_screen_title_sequence() {
+        let input = b"\x1bkroot@blinools:~\x1b\\[root@blinools ~]# ";
+        assert_eq!(filter(input), b"[root@blinools ~]# ");
+        assert_eq!(filter_bytewise(input), b"[root@blinools ~]# ");
     }
 }
