@@ -51,7 +51,7 @@ impl Hypervisor for CloudHypervisor {
             mounts.push("--fs".into());
             mounts.push(format!(
                 "id={},tag={},socket={},num_queues=1,queue_size=512",
-                fs_device_id(&config.name, &mount.tag),
+                fs_device_id(config.name, &mount.tag),
                 mount.tag,
                 mount.socket_path.display()
             ));
