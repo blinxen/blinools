@@ -434,6 +434,7 @@ fn delete_sandbox(
 pub struct SandboxInfo {
     pub name: String,
     pub state: String,
+    pub shares: String,
 }
 
 fn list_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error> {
@@ -442,10 +443,17 @@ fn list_sandboxes(config: Option<&config::Config>) -> Result<(), anyhow::Error> 
         .into_iter()
         .map(|name| {
             let sandbox_runtime_dir = base_dir.join(&name);
+            let shares = shares_for_sandbox(&sandbox_runtime_dir);
             SandboxInfo {
                 state: hypervisor::for_sandbox(config, &sandbox_runtime_dir)
                     .state(&sandbox_runtime_dir)
-                    .to_string(),
+                    .to_string()
+                    .to_lowercase(),
+                shares: if shares.is_empty() {
+                    String::from("-")
+                } else {
+                    shares.join("-")
+                },
                 name,
             }
         })
@@ -495,6 +503,22 @@ fn ensure_unique_sandbox_name(
         anyhow::bail!("a sandbox with the same name already exists");
     }
     Ok(())
+}
+
+fn shares_for_sandbox(sandbox_runtime_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(sandbox_runtime_dir) else {
+        return Vec::new();
+    };
+    let mut tags: Vec<String> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let file = e.file_name().into_string().ok()?;
+            let tag = file.strip_prefix("vfsd-")?.strip_suffix(".sock")?;
+            (!tag.is_empty()).then(|| tag.to_string())
+        })
+        .collect();
+    tags.sort();
+    tags
 }
 
 fn existing_sandbox_names() -> Vec<String> {
