@@ -302,9 +302,7 @@ fn api_with_timeout(
         .context("flushing request to cloud hypervisor")?;
     // Response
     let mut response = Vec::new();
-    let mut body = String::new();
-    let mut status_code = 0;
-    loop {
+    let (status_code, body) = loop {
         let mut bytes = vec![0; 256];
         // Read until there are no bytes left or we have received the full body
         // (according to content-length)
@@ -312,7 +310,7 @@ fn api_with_timeout(
             .read(&mut bytes)
             .context("reading response bytes from cloud hypervisor")?;
         if count == 0 {
-            break;
+            anyhow::bail!("cloud hypervisor closed the socket before completing its response");
         }
         response.extend_from_slice(&bytes[..count]);
         if response.len() > MAX_API_RESPONSE_LENGTH {
@@ -332,10 +330,10 @@ fn api_with_timeout(
 
             // Status code is not a header but we include the first line into the headers array
             // (not 100% correct but we don't care here)
-            status_code = get_status_code(headers)?;
+            let status_code = get_status_code(headers)?;
             if status_code == 204 {
                 // No body available for this status code
-                break;
+                break (status_code, String::new());
             }
 
             let content_length = get_header(headers, "Content-Length")
@@ -344,14 +342,16 @@ fn api_with_timeout(
                 .parse::<usize>()
                 .context("parsing Content-Length header")?;
 
-            if response.len() >= body_offset + content_length {
-                body =
-                    String::from_utf8(response[body_offset..body_offset + content_length].to_vec())
-                        .context("parsing HTTP body as valid UTF-8")?;
-                break;
+            let body_end = body_offset
+                .checked_add(content_length)
+                .context("Content-Length is too big")?;
+            if response.len() >= body_end {
+                let body = String::from_utf8(response[body_offset..body_end].to_vec())
+                    .context("parsing HTTP body as valid UTF-8")?;
+                break (status_code, body);
             }
         }
-    }
+    };
 
     Ok(ApiResponse { status_code, body })
 }
