@@ -2,7 +2,7 @@ mod config;
 #[cfg(feature = "man")]
 mod man;
 mod sandbox;
-mod wip_pr;
+mod worktree;
 
 use std::io::IsTerminal;
 
@@ -14,7 +14,7 @@ use clap_complete::{CompleteEnv, Shell, env::Shells};
 #[command(
     name = "blinools",
     about = "Run blinxen's command-line utilities.",
-    after_long_help = "Examples:\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
+    after_long_help = "Examples:\n  blinools worktree create\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -32,20 +32,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// This command is not yet implemented.
-    ///
-    /// It accepts arguments but creates no worktree or branch.
-    WipPr {
-        /// Specify the branch name.
-        branch_name: String,
-
-        /// Specify an optional branch type.
-        #[arg(short = 't', long = "branch-type")]
-        branch_type: Option<String>,
-
-        /// Specify an optional task number.
-        #[arg(short = 'n', long = "task-number")]
-        task_number: Option<String>,
+    /// Common git worktree operations used during development.
+    #[command(
+        after_long_help = "Examples:\n  blinools worktree create\n  blinools worktree create my-branch --branch-type task --task-number 123"
+    )]
+    Worktree {
+        #[command(subcommand)]
+        command: worktree::Command,
     },
 
     /// Create and manage Linux microVM sandboxes.
@@ -85,11 +78,10 @@ fn main() -> Result<(), anyhow::Error> {
         .init();
 
     match args.command {
-        Commands::WipPr {
-            branch_name,
-            branch_type,
-            task_number,
-        } => wip_pr::create(&branch_name, branch_type.as_deref(), task_number.as_deref())?,
+        Commands::Worktree { command } => {
+            let config = config::parse_config(args.config_file.as_ref())?;
+            worktree::handle(command, &config.worktree)?;
+        }
         Commands::Sandbox { command } => {
             if !std::io::stdin().is_terminal() {
                 eprintln!("This command requires an interactive terminal session");

@@ -24,6 +24,22 @@ Project values override global values key by key.
 A key that is missing from the project file keeps its global value,
 and a key that is missing from both gets its default.
 
+## The worktree table
+
+### Options
+
+- `types` (array of string): List of valid types to create worktrees for. This
+  defines what the `--type` flag accepts or what the interactive selector shows.
+
+### Examples
+
+Default configuration:
+
+```toml
+[worktree]
+type = ["task", "bug"]
+```
+
 ## The sandbox table
 
 Everything in this section goes in `[sandbox]`.
@@ -169,7 +185,7 @@ The following flags affect the current run:
 If both hidden-path flags are given, `--no-hidden` wins. `git_action` applies
 independently of these flags. Configuration files are left unchanged.
 
-## Examples
+### Examples
 
 A minimal configuration with an existing kernel and rootfs image:
 
@@ -222,7 +238,7 @@ host_dir = "."
 read_only = true
 ```
 
-## See also
+### See also
 
 [blinools(1)](cli/blinools.md), [blinools-sandbox(1)](cli/blinools-sandbox.md),
 [blinools-sandbox-create(1)](cli/blinools-sandbox-create.md)

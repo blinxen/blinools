@@ -7,13 +7,19 @@ use anyhow::Context;
 use garde::Validate;
 use serde::Deserialize;
 
-use crate::sandbox::{self, config::FsShare};
+use crate::{
+    sandbox::{self, config::FsShare},
+    worktree,
+};
 
 const CONFIG_FILE_NAME: &str = "blinools.toml";
 
 #[derive(Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default)]
+    #[garde(skip)]
+    pub worktree: worktree::config::Config,
     #[garde[dive]]
     pub sandbox: Option<sandbox::config::Config>,
 }
@@ -167,6 +173,22 @@ mod tests {
         fs::write(&path, body).unwrap();
 
         path
+    }
+
+    #[test]
+    fn worktree_types_default_and_can_be_overridden() {
+        assert_eq!(
+            parse_config_with(None, None).unwrap().worktree.types,
+            ["task", "bug"]
+        );
+        let tmp = tempdir().unwrap();
+        let path = write_config(
+            tmp.path(),
+            "worktree.toml",
+            "[worktree]\ntypes = [\"feature\", \"fix\"]\n",
+        );
+        let config = parse_config_with(None, path.to_str()).unwrap();
+        assert_eq!(config.worktree.types, ["feature", "fix"]);
     }
 
     fn share_dir(root: &Path, name: &str) -> PathBuf {

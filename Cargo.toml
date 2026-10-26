@@ -16,8 +16,10 @@ clap_complete = { version = "4", features = ["unstable-dynamic"] }
 clap_mangen = { version = "0.3", optional = true }
 jiff = { version = "0.2", optional = true, default-features = false, features = ["std"] }
 config = { version = "0.15", default-features = false, features = ["toml"] }
+dialoguer = { version = "0.12", default-features = false }
 env_logger = "0.11"
 garde = { version = "0.23", features = ["derive"] }
+gix = { version = "0.90", default-features = false, features = ["worktree-mutation", "sha1", "auto-chain-error"] }
 imago = { version = "0.2", default-features = false, features = ["sync"] }
 libc = "0.2"
 log = { version = "0.4", default-features = false }

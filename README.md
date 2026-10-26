@@ -8,7 +8,7 @@ A collection of my various bash scripts converted into a Rust CLI (Linux only).
 | --- | --- |
 | `blinools sandbox` | Create and manage microVM sandboxes. See [docs/sandbox.md](docs/sandbox.md). |
 | `blinools completions` | Generate shell completion scripts. |
-| `blinools wip-pr` | Not implemented yet. |
+| `blinools worktree` | Common git worktree operations used during development. |
 
 Run `blinools --help` or `blinools <command> --help` for the options of each command.
 

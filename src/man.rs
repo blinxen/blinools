@@ -79,7 +79,10 @@ fn render(command: &Command, parent: Option<&str>, out_dir: &Path, date: &str) -
         }
     }
     descendants(command, &mut references);
-    if name == "blinools" || name.starts_with("blinools-sandbox") {
+    if name == "blinools"
+        || name.starts_with("blinools-sandbox")
+        || name.starts_with("blinools-worktree")
+    {
         references.push("blinools.toml(5)".to_owned());
     }
     references.sort();
