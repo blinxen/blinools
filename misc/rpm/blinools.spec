@@ -1,7 +1,7 @@
 %bcond check 1
 
 Name:           blinools
-Version:        0.4.0
+Version:        0.5.0
 Release:        1%{?dist}
 Summary:        Collection of blinxen's command-line utilities
 License:        GPL-3.0-or-later AND (0BSD OR Apache-2.0 OR MIT) AND Apache-2.0 AND BSL-1.0 AND MIT AND Unicode-3.0 AND Unlicense AND Zlib
@@ -81,5 +81,7 @@ install -Dpm 0644 -t %{buildroot}%{_docdir}/%{name}/cli docs/cli/*.md
 %endif
 
 %changelog
+* Wed Oct 28 2026 blinxen <h-k-81@hotmail.com> - 0.5.0-1
+- Update to version 0.5.0
 * Thu Oct 22 2026 blinxen <h-k-81@hotmail.com> - 0.4.0-1
 - Initial package

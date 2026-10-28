@@ -1,6 +1,6 @@
 # Changelog for `blinools`
 
-## Unreleased
+## 0.5.0
 
 ### Breaking changes
 
