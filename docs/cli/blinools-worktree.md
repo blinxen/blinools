@@ -28,8 +28,11 @@ Print help (see a summary with '-h')
 
 # SUBCOMMANDS
 
-[blinools-worktree-create(1)](blinools-worktree-create.md)  
-Create a branch from HEAD and check it out in a new worktree
+[blinools-worktree-wip(1)](blinools-worktree-wip.md)  
+Create a WIP (work-in-progress) branch from HEAD and check it out in a new worktree
+
+[blinools-worktree-review(1)](blinools-worktree-review.md)  
+Check out an already existing branch in a new worktree to review it
 
 # EXAMPLES
 
@@ -38,4 +41,4 @@ Create a branch from HEAD and check it out in a new worktree
 
 # SEE ALSO
 
-[blinools(1)](blinools.md), [blinools-worktree-create(1)](blinools-worktree-create.md), [blinools.toml(5)](../configuration.md)
+[blinools(1)](blinools.md), [blinools-worktree-review(1)](blinools-worktree-review.md), [blinools-worktree-wip(1)](blinools-worktree-wip.md), [blinools.toml(5)](../configuration.md)

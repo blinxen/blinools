@@ -30,6 +30,18 @@ and a key that is missing from both gets its default.
 
 - `types` (array of string): List of valid types to create worktrees for. This
   defines what the `--type` flag accepts or what the interactive selector shows.
+  The default is `["task", "bug"]`.
+- `wip_prefix` (string): Prefix of the directory created by `worktree wip`.
+  The default is `"wip-pr"`.
+- `review_prefix` (string): Prefix of the directory created by `worktree review`.
+  The default is `"pr-review"`.
+
+Worktrees are created under the repository root in a directory named
+`PREFIX_BRANCH`. The prefix and the branch name are separated by an underscore,
+and any `/` in the branch name is replaced by a hyphen. For example, with the
+default configuration the branch `feature/login` is checked out in
+`wip-pr_feature-login` by `worktree wip` and in `pr-review_feature-login` by
+`worktree review`.
 
 ### Examples
 
@@ -37,7 +49,9 @@ Default configuration:
 
 ```toml
 [worktree]
-type = ["task", "bug"]
+types = ["task", "bug"]
+wip_prefix = "wip-pr"
+review_prefix = "pr-review"
 ```
 
 ## The sandbox table
