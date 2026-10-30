@@ -1,5 +1,11 @@
 # Changelog for `blinools`
 
+## UNRELEASED
+
+### Changed
+
+* Update kernel to 7.3.1
+
 ## 0.5.0
 
 ### Breaking changes
