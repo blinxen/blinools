@@ -74,7 +74,9 @@ fn wip(
     let (repo, root) = open_main_repo(starting_path)?;
 
     let mut branch = String::new();
-    if let Some(branch_type) = branch_type {
+    if let Some(branch_type) = branch_type
+        && !branch_type.is_empty()
+    {
         ensure!(
             config.types.contains(&branch_type),
             "unknown branch type {branch_type:?}; available types: {}",
@@ -83,7 +85,9 @@ fn wip(
 
         branch.push_str(&branch_type);
         branch.push('-');
-        if let Some(number) = task_number {
+        if let Some(number) = task_number
+            && !number.is_empty()
+        {
             branch.push_str(&number);
             branch.push('-');
         }
