@@ -6,6 +6,10 @@
 
 * Update kernel to 7.3.1
 
+### Fixed
+
+* `worktree wip` ignores an empty `--type` or `--task-number` instead of adding empty parts to the branch name.
+
 ## 0.5.0
 
 ### Breaking changes

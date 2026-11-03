@@ -81,7 +81,8 @@ Allowed characters are:
 - `kernel` (path, required): The Linux kernel file to boot.
 - `rootfs` (path, required): The root filesystem image. It is used as a
   read-only base, and changes to the guest root disk are saved in an overlay.
-- `hypervisor` (enum): Valid options are `"Qemu"` (the default) or `"CloudHypervisor"`.
+- `hypervisor` (enum): Valid options are `"CloudHypervisor"` (the default) or `"Qemu"`.
+  `sandbox attach-share` and `sandbox detach-share` only work with `"CloudHypervisor"`.
 - `rootfs_type` (enum): The format of the base image: `"Raw"` (the default) or `"QCOW2"`.
 - `kernel_cmdline` (string): Extra kernel arguments, empty by default. Values
   containing `console=` or `root=` are rejected, because blinools adds `console=hvc0` and `root=/dev/vda` itself.

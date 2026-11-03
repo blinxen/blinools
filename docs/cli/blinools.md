@@ -39,7 +39,7 @@ Generate shell completion registration scripts
 
 # EXAMPLES
 
-      blinools worktree create
+      blinools worktree wip fix-login
       blinools sandbox create
       blinools --config ./sandbox.toml sandbox create work
       blinools completions bash

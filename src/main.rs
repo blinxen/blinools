@@ -14,7 +14,7 @@ use clap_complete::{CompleteEnv, Shell, env::Shells};
 #[command(
     name = "blinools",
     about = "Run blinxen's command-line utilities.",
-    after_long_help = "Examples:\n  blinools worktree create\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
+    after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -34,7 +34,7 @@ struct Cli {
 enum Commands {
     /// Common git worktree operations used during development.
     #[command(
-        after_long_help = "Examples:\n  blinools worktree create\n  blinools worktree create my-branch --branch-type task --task-number 123"
+        after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools worktree review fix-login"
     )]
     Worktree {
         #[command(subcommand)]

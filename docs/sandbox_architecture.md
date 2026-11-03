@@ -38,8 +38,9 @@ flowchart TD
 
 ### Boot and storage
 
-[QEMU](https://www.qemu.org/) (`qemu-system-x86_64`) is the default VMM.
-[Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) is the alternative.
+[Cloud Hypervisor](https://github.com/cloud-hypervisor/cloud-hypervisor) is the default VMM.
+[QEMU](https://www.qemu.org/) (`qemu-system-x86_64`) is the alternative.
+QEMU does not support hotplugging shares, so `attach-share` and `detach-share` need Cloud Hypervisor.
 blinools controls them through a QEMU QMP socket or a Cloud Hypervisor API socket.
 
 The VMM boots the configured `kernel` with a writable qcow2 overlay backed by

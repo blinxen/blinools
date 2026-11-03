@@ -36,8 +36,8 @@ Check out an already existing branch in a new worktree to review it
 
 # EXAMPLES
 
-      blinools worktree create
-      blinools worktree create my-branch --branch-type task --task-number 123
+      blinools worktree wip fix-login
+      blinools worktree review fix-login
 
 # SEE ALSO
 

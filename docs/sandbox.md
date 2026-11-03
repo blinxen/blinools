@@ -14,8 +14,8 @@ see [configuration.md](configuration.md).
 
 - Linux with unprivileged user namespaces and hardware virtualization (KVM). Your user needs read and
   write access to `/dev/kvm`. Most distributions have a `kvm` group for that.
-- A VMM, either [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`) or
-  [Cloud Hypervisor](https://www.cloudhypervisor.org/docs/prologue/quick-start/). Cloud Hypervisor is
+- A VMM, either [Cloud Hypervisor](https://www.cloudhypervisor.org/docs/prologue/quick-start/) (the default)
+  or [QEMU](https://www.qemu.org/) (`qemu-system-x86_64`, set `hypervisor = "Qemu"`). Cloud Hypervisor is
   not packaged by most distributions, its guide covers prebuilt binaries and building from source.
 - [virtiofsd](https://gitlab.com/virtio-fs/virtiofsd), when you share host directories.
 - [passt](https://passt.top) and `pasta`, when networking is enabled. Both come in the `passt` package of most distributions.
@@ -28,11 +28,13 @@ see [configuration.md](configuration.md).
   and the virtio console. Sharing also needs virtio-fs support. A distribution kernel
   works if it includes the required drivers rather than relying on initramfs modules.
 
-On Fedora, for QEMU:
+On Fedora, install the common requirements:
 
 ```bash
-sudo dnf install qemu-system-x86 passt virtiofsd nftables
+sudo dnf install passt virtiofsd nftables
 ```
+
+If you use QEMU, also install it with `sudo dnf install qemu-system-x86`.
 
 Fedora installs `virtiofsd` in `/usr/libexec`.
 If it isn't in your `PATH`, set `virtiofsd.binary = "/usr/libexec/virtiofsd"` in `[sandbox]`.
@@ -71,6 +73,21 @@ and boot from the base image.
 
 A sandbox name has to be unique among the running sandboxes.
 `create` fails if a sandbox with that name is already running.
+
+## Attaching and detaching shares
+
+With Cloud Hypervisor, you can add or remove a share while the sandbox is running:
+
+```bash
+blinools sandbox attach-share work /path/to/dir
+blinools sandbox detach-share work /path/to/dir
+```
+
+`attach-share` does not mount the share inside the guest. It prints the command to run in the sandbox.
+Shares added by `create` can be detached as well, and `sandbox ps` lists the attached shares.
+Both commands are not available with QEMU. See the
+[attach-share](cli/blinools-sandbox-attach-share.md) and
+[detach-share](cli/blinools-sandbox-detach-share.md) references.
 
 ## Build and run the AI agent example
 
