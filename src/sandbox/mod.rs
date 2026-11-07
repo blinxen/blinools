@@ -174,6 +174,11 @@ pub enum Command {
 }
 
 pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), anyhow::Error> {
+    // https://www.kernel.org/doc/html/latest/userspace-api/no_new_privs.html
+    if unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1usize, 0usize, 0usize, 0usize) } != 0 {
+        return Err(std::io::Error::last_os_error()).context("setting no_new_privs");
+    }
+
     match command {
         Command::Ps => list_sandboxes(config.as_ref())?,
         Command::Create {

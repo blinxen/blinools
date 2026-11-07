@@ -76,6 +76,9 @@ the binary, blinools sets up:
 pasta uses the same process launcher with namespace creation disabled. It needs
 access to the host network and joins passt's network namespace to connect the two.
 
+On entering the sandbox command handler, blinools sets `PR_SET_NO_NEW_PRIVS` before any cloning.
+This prevents execution from gaining privileges through setuid/setgid bits or file capabilities.
+
 ### Resource confinement
 
 When cgroup setup succeeds, the VMM and helpers (passt, pasta and virtiofsd) start

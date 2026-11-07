@@ -4,6 +4,7 @@
 
 ### Changed
 
+* Harden sandbox command with `PR_SET_NO_NEW_PRIVS`
 * `worktree wip` names its directory using only the supplied `BRANCH_NAME`, without the type or task number.
 * Update kernel to 7.3.3
 
