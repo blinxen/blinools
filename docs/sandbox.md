@@ -89,33 +89,14 @@ Both commands are not available with QEMU. See the
 [attach-share](cli/blinools-sandbox-attach-share.md) and
 [detach-share](cli/blinools-sandbox-detach-share.md) references.
 
-## Build and run the AI agent example
+## Examples
 
-The build scripts target x86-64. You need Podman, the ext4 tools (`mkfs.ext4`) and the kernel build dependencies.
-On Fedora:
-
-```bash
-sudo dnf install podman e2fsprogs curl tar xz make gcc flex bison bc openssl-devel elfutils-libelf-devel perl diffutils
-```
-
-From a checkout of the repository:
-
-```bash
-cd examples/ai-agent
-./build-kernel.sh
-./build-rootfs.sh
-cd ../..
-blinools sandbox create work
-```
-
-The scripts download and compile the Linux kernel and build a Fedora root filesystem with Podman.
-The `blinools.toml` in the repository already points to these images.
-Check the binary paths and the DNS setting before you use it.
+Each example's README includes its build and run instructions.
 
 | Example | Description |
 | --- | --- |
-| [`examples/basic`](../examples/basic) | A minimal Fedora rootfs with systemd, networking, development tools and an auto-login user. |
-| [`examples/ai-agent`](../examples/ai-agent) | A Fedora rootfs with Claude Code, OpenCode and Codex. The `agent` user is unprivileged and can run only `poweroff` with sudo. Shares are automatically mounted into its home directory. |
+| [Basic](../examples/basic/README.md) | A Fedora rootfs with systemd, networking, development tools and an auto-login user. |
+| [AI agent](../examples/ai-agent/README.md) | A Fedora rootfs with Claude Code, OpenCode and Codex. Shares are automatically mounted into the `agent` user's home directory. |
 
 ## Commands
 

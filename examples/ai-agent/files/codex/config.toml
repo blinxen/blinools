@@ -1,0 +1,13 @@
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+forced_login_method = "chatgpt"
+check_for_update_on_startup = false
+
+[notice]
+hide_full_access_warning = true
+
+[tui]
+show_tooltips = false
+
+[features]
+daemon_auto_start = false

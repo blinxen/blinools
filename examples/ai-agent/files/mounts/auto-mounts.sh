@@ -16,7 +16,7 @@ is_excluded() {
 # Sources that land somewhere other than ${AGENT_HOME}/<name>.
 dest_for() {
     case "$1" in
-        claude-login) echo "${AGENT_HOME}/.claude-login" ;;
+        api-keys) echo "${AGENT_HOME}/.api-keys" ;;
         *)            echo "${AGENT_HOME}/$1" ;;
     esac
 }

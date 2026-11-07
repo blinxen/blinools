@@ -87,6 +87,7 @@ RUN groupadd -f "${AGENT_USER}" && \
     AGENT_HOME="$(getent passwd "${AGENT_USER}" | cut -d: -f6)" && \
     install -d -m 0755 -o "${AGENT_USER}" -g "${AGENT_USER}" \
         "${AGENT_HOME}/.claude" \
+        "${AGENT_HOME}/.codex" \
         "${AGENT_HOME}/.config" \
         "${AGENT_HOME}/.config/opencode"
 
@@ -114,6 +115,7 @@ COPY files/sudoers-deny-agent /etc/sudoers.d/90-deny-agent
 RUN chmod 0400 /etc/sudoers.d/90-deny-agent && \
     visudo -cf /etc/sudoers.d/90-deny-agent
 
+COPY files/agent/agent-api-keys.sh /etc/profile.d/agent-api-keys.sh
 # Claude
 COPY files/claude/statusline.py /usr/local/bin/claude_statusline.py
 COPY files/claude/claude.json /claude.json
@@ -122,19 +124,18 @@ RUN chmod 0555 /usr/local/bin/claude_statusline.py
 # Opencode
 COPY files/opencode/opencode.json /tmp/opencode.json
 COPY files/agent/AGENTS.md /tmp/AGENTS.md
+# Codex
+COPY files/codex/config.toml /tmp/codex-config.toml
 
 RUN AGENT_HOME="$(getent passwd "${AGENT_USER}" | cut -d: -f6)" && \
     install -m 0555 -o root -g root /tmp/settings.json "${AGENT_HOME}/.claude/settings.json" && \
     install -m 0555 -o root -g root /tmp/opencode.json "${AGENT_HOME}/.config/opencode/opencode.json" && \
     install -m 0555 -o root -g root /tmp/AGENTS.md "${AGENT_HOME}/.config/opencode/AGENTS.md" && \
     install -m 0555 -o root -g root /tmp/AGENTS.md "${AGENT_HOME}/.claude/CLAUDE.md" && \
-    rm -f /tmp/settings.json /tmp/opencode.json /tmp/AGENTS.md && \
-    printf '%s\n' \
-        'if [ -r "${HOME}/.claude-login/export-auth-token.sh" ]; then' \
-        '    . "${HOME}/.claude-login/export-auth-token.sh"' \
-        'fi' >> "${AGENT_HOME}/.bashrc" && \
-    install -m 0444 -o "${AGENT_USER}" -g "${AGENT_USER}" /claude.json "${AGENT_HOME}/.claude.json" && \
-    rm /claude.json
+    install -m 0644 -o root -g root /tmp/codex-config.toml "${AGENT_HOME}/.codex/config.toml" && \
+    install -m 0444 -o root -g root /claude.json "${AGENT_HOME}/.claude.json" && \
+    chmod 0644 /etc/profile.d/agent-api-keys.sh && \
+    rm -f /tmp/settings.json /tmp/opencode.json /tmp/AGENTS.md /tmp/codex-config.toml /claude.json
 
 # ===========================================================================
 # Agent binaries
