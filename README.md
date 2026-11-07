@@ -21,6 +21,8 @@ dnf copr enable blinxen/tools
 dnf install blinools
 ```
 
+On Ubuntu, use the [prebuilt binaries](#prebuilt-binaries) or [build from source](#build-from-source).
+
 ### Prebuilt binaries
 
 Tagged releases are built for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`.

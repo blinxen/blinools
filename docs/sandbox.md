@@ -28,7 +28,9 @@ see [configuration.md](configuration.md).
   and the virtio console. Sharing also needs virtio-fs support. A distribution kernel
   works if it includes the required drivers rather than relying on initramfs modules.
 
-On Fedora, install the common requirements:
+### Fedora
+
+Install the common requirements:
 
 ```bash
 sudo dnf install passt virtiofsd nftables
@@ -38,6 +40,37 @@ If you use QEMU, also install it with `sudo dnf install qemu-system-x86`.
 
 Fedora installs `virtiofsd` in `/usr/libexec`.
 If it isn't in your `PATH`, set `virtiofsd.binary = "/usr/libexec/virtiofsd"` in `[sandbox]`.
+
+### Ubuntu
+
+On Ubuntu 24.04 LTS and later, install the common requirements:
+
+```bash
+sudo apt update
+sudo apt install passt virtiofsd nftables
+```
+
+If you use QEMU, also install it with `sudo apt install qemu-system-x86`.
+
+Ubuntu installs `virtiofsd` in `/usr/libexec`.
+If it isn't in your `PATH`, set `virtiofsd.binary = "/usr/libexec/virtiofsd"` in `[sandbox]`.
+
+Ubuntu enables an AppArmor restriction on unprivileged user namespaces by default.
+For the standard blinools setup, disable this restriction so the sandbox launcher
+can create and configure its namespaces.
+
+To disable it until the next reboot:
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
+
+To persist the setting across reboots and apply it now:
+
+```bash
+echo 'kernel.apparmor_restrict_unprivileged_userns = 0' | sudo tee /etc/sysctl.d/60-apparmor-namespace.conf
+sudo sysctl -p /etc/sysctl.d/60-apparmor-namespace.conf
+```
 
 ## Getting started with your own images
 
