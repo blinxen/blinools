@@ -153,11 +153,13 @@ RUN tmp_dir="$(mktemp -d)" && \
     install -m 0755 "${tmp_dir}/opencode" /usr/local/bin/opencode && \
     rm -rf "${tmp_dir}"
 
-ARG CODEX_URL=https://github.com/openai/codex/releases/latest/download/codex-x86_64-unknown-linux-musl.tar.gz
+ARG CODEX_URL=https://github.com/openai/codex/releases/latest/download/codex-package-x86_64-unknown-linux-musl.tar.gz
 RUN tmp_dir="$(mktemp -d)" && \
     curl -fsSL -o "${tmp_dir}/codex.tar.gz" "${CODEX_URL}" && \
     tar -xzf "${tmp_dir}/codex.tar.gz" -C "${tmp_dir}" && \
-    install -m 0755 "${tmp_dir}/codex-x86_64-unknown-linux-musl" /usr/local/bin/codex && \
+    install -m 0755 "${tmp_dir}/bin/codex" /usr/local/bin/codex && \
+    install -m 0755 "${tmp_dir}/bin/codex-code-mode-host" /usr/local/bin/codex-code-mode-host && \
+    install -m 0755 "${tmp_dir}/bin/codex-exec-server" /usr/local/bin/codex-exec-server && \
     rm -rf "${tmp_dir}"
 
 # ===========================================================================

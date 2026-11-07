@@ -4,7 +4,7 @@
 
 ### Changed
 
-* Update kernel to 7.3.1
+* Update kernel to 7.3.3
 
 ### Fixed
 
