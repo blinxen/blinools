@@ -36,10 +36,10 @@ and a key that is missing from both gets its default.
 - `review_prefix` (string): Prefix of the directory created by `worktree review`.
   The default is `"pr-review"`.
 
-Worktrees are created under the repository root in a directory named
-`PREFIX_BRANCH`. The prefix and the branch name are separated by an underscore,
-and any `/` in the branch name is replaced by a hyphen. For example, with the
-default configuration the branch `feature/login` is checked out in
+Worktrees are created under the repository root in a directory named `<PREFIX>_<BRANCH>`.
+The prefix and the branch name are separated by an underscore,
+and any `/` in the branch name is replaced by a hyphen.
+For example, with the default configuration the branch `feature/login` is checked out in
 `wip-pr_feature-login` by `worktree wip` and in `pr-review_feature-login` by
 `worktree review`.
 

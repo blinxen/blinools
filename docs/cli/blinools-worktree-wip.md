@@ -10,7 +10,7 @@ blinools-worktree-wip - Create a WIP (work-in-progress) branch from HEAD and che
 
 Create a WIP (work-in-progress) branch from HEAD and check it out in a new worktree.
 
-The branch is created as \<type\>-\<task-number\>-\<branch-name\>. If the branch already exists, it is not created again and the existing branch is checked out in the new worktree. The worktree is created at \<wip_prefix\>\_\<branch\> under the repository root, where any '/' in the branch name is replaced by '-'. \<wip_prefix\> comes from the config.
+The branch is created as \<type\>-\<task-number\>-\<branch-name\>. If the branch already exists, it is not created again and the existing branch is checked out in the new worktree. The worktree is created at \<wip_prefix\>\_\<branch-name\> under the repository root, using only the supplied BRANCH_NAME, without the type or task number. Any '/' in the branch name is replaced by '-'. \<wip_prefix\> comes from the config.
 
 # OPTIONS
 

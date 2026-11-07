@@ -17,8 +17,9 @@ pub enum Command {
     /// The branch is created as <type>-<task-number>-<branch-name>.
     /// If the branch already exists, it is not created again and the existing branch
     /// is checked out in the new worktree.
-    /// The worktree is created at <wip_prefix>_<branch> under the repository root,
-    /// where any '/' in the branch name is replaced by '-'.
+    /// The worktree is created at <wip_prefix>_<branch-name> under the repository root,
+    /// using only the supplied BRANCH_NAME, without the type or task number.
+    /// Any '/' in the branch name is replaced by '-'.
     /// <wip_prefix> comes from the config.
     #[command(
         after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools worktree wip fix-login --type bug --task-number 123"
@@ -95,7 +96,7 @@ fn wip(
     branch.push_str(&branch_name);
     validate_git_branch_name(&branch)?;
 
-    let destination = worktree_destination(&root, &config.wip_prefix, &branch)?;
+    let destination = worktree_destination(&root, &config.wip_prefix, &branch_name)?;
     let full_name = branch_ref_name(&branch)?;
 
     let created = if branch_exists(&repo, &branch)? {
@@ -445,7 +446,7 @@ mod tests {
         .unwrap();
 
         assert!(git_branch_exists(root, "bug-123-fix-login"));
-        let worktree = root.join("wip_bug-123-fix-login");
+        let worktree = root.join("wip_fix-login");
         assert_eq!(checked_out_branch(&worktree), "bug-123-fix-login");
     }
 
@@ -464,7 +465,7 @@ mod tests {
         .unwrap();
 
         assert!(git_branch_exists(root, "feat-fix-login"));
-        assert!(root.join("wip_feat-fix-login").is_dir());
+        assert!(root.join("wip_fix-login").is_dir());
     }
 
     #[test]
@@ -483,7 +484,7 @@ mod tests {
 
         assert!(format!("{error:#}").contains("unknown branch type"));
         assert!(!git_branch_exists(root, "nope-fix-login"));
-        assert!(!root.join("wip_nope-fix-login").exists());
+        assert!(!root.join("wip_fix-login").exists());
     }
 
     #[test]
