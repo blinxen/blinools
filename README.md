@@ -23,6 +23,9 @@ dnf install blinools
 
 On Ubuntu, use the [prebuilt binaries](#prebuilt-binaries) or [build from source](#build-from-source).
 
+To run sandboxes, also follow the [runtime requirements](docs/sandbox.md#requirements),
+including dependency installation and host configuration for your distribution.
+
 ### Prebuilt binaries
 
 Tagged releases are built for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`.
