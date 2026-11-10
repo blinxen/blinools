@@ -1,5 +1,12 @@
 # Changelog for `blinools`
 
+## UNRELEASED
+
+### Fixed
+
+* Shell completion for `sandbox shutdown` only suggests running sandboxes.
+* Fix directory path completion for `sandbox create -s` and `--share`.
+
 ## 0.6.0
 
 ### Changed

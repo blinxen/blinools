@@ -59,7 +59,7 @@ pub enum Command {
         /// Unnamed shares take their name from the directory. Paths are relative
         /// to the working directory and cannot contain colons. This option replaces
         /// all settings of a configured share with the same name.
-        #[arg(short = 's', long = "share", value_parser = config::parse_share)]
+        #[arg(short = 's', long = "share", value_parser = config::parse_share, add = ArgValueCompleter::new(PathCompleter::dir()))]
         shares: Vec<FsShare>,
         /// Specify the sandbox name.
         ///
@@ -142,7 +142,7 @@ pub enum Command {
     )]
     Shutdown {
         /// Specify the sandbox name.
-        #[arg(add = ArgValueCompleter::new(complete_sandbox_name))]
+        #[arg(add = ArgValueCompleter::new(complete_running_sandbox_name))]
         name: Name,
         /// Ignore guest shutdown failures reported by Cloud Hypervisor.
         ///
@@ -556,6 +556,16 @@ fn complete_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
         .into_iter()
         .filter(|name| name.starts_with(current))
         .map(CompletionCandidate::new)
+        .collect()
+}
+
+fn complete_running_sandbox_name(current: &OsStr) -> Vec<CompletionCandidate> {
+    complete_sandbox_name(current)
+        .into_iter()
+        .filter(|candidate| {
+            let dir = runtime_dir().join(candidate.get_value());
+            hypervisor::for_sandbox(None, &dir).is_running(&dir)
+        })
         .collect()
 }
 
