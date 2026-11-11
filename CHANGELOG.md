@@ -4,6 +4,7 @@
 
 ### Fixed
 
+* `sandbox shutdown --force` falls back to signaling the parent blinools process when hypervisor shutdown fails.
 * Shell completion for `sandbox shutdown` only suggests running sandboxes.
 * Fix directory path completion for `sandbox create -s` and `--share`.
 

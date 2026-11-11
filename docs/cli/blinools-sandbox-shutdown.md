@@ -10,14 +10,14 @@ blinools-sandbox-shutdown - Stop a sandbox through its hypervisor
 
 Stop a sandbox through its hypervisor.
 
-To let the guest operating system shut down cleanly, run poweroff inside the guest. Does nothing when the hypervisor control socket is unavailable.
+To let the guest operating system shut down cleanly, run poweroff inside the guest. Use --force to terminate the parent if hypervisor shutdown fails.
 
 # OPTIONS
 
 **-f**, **--force**  
 Ignore guest shutdown failures reported by Cloud Hypervisor.
 
-The command still fails if the virtual machine monitor cannot shut down. This flag does not change QEMU shutdown.
+If hypervisor shutdown fails, terminate the owning blinools process.
 
 **-c**, **--config** *\<FILE\>*  
 Use FILE as the project configuration.

@@ -136,7 +136,7 @@ pub enum Command {
     /// Stop a sandbox through its hypervisor.
     ///
     /// To let the guest operating system shut down cleanly, run poweroff inside
-    /// the guest. Does nothing when the hypervisor control socket is unavailable.
+    /// the guest. Use --force to terminate the parent if hypervisor shutdown fails.
     #[command(
         after_long_help = "Examples:\n  blinools sandbox shutdown work\n  blinools sandbox shutdown work --force"
     )]
@@ -146,8 +146,7 @@ pub enum Command {
         name: Name,
         /// Ignore guest shutdown failures reported by Cloud Hypervisor.
         ///
-        /// The command still fails if the virtual machine monitor cannot shut down.
-        /// This flag does not change QEMU shutdown.
+        /// If hypervisor shutdown fails, terminate the owning blinools process.
         #[arg(short = 'f', long = "force", default_value_t = false)]
         force: bool,
     },
@@ -230,9 +229,7 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
             )?;
         }
         Command::Shutdown { name, force } => {
-            let sandbox_runtime_dir = runtime_dir().join(&name);
-            hypervisor::for_sandbox(config.as_ref(), &sandbox_runtime_dir)
-                .shutdown(&sandbox_runtime_dir, force)?;
+            shutdown_sandbox(config.as_ref(), &name, force)?;
         }
         Command::Delete { name, force } => {
             delete_sandbox(config.as_ref(), &name, force)?;
@@ -240,6 +237,40 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
         Command::Prune => prune_sandboxes(config.as_ref())?,
     };
 
+    Ok(())
+}
+
+fn shutdown_sandbox(
+    config: Option<&config::Config>,
+    name: &Name,
+    force: bool,
+) -> Result<(), anyhow::Error> {
+    let sandbox_runtime_dir = runtime_dir().join(name);
+    let hypervisor = hypervisor::for_sandbox(config, &sandbox_runtime_dir);
+    let result = hypervisor.shutdown(&sandbox_runtime_dir, force);
+    let pid_file = sandbox_runtime_dir.join("blinools.pid");
+    if force && result.is_err() && pid_file.exists() {
+        let pid: libc::pid_t = std::fs::read_to_string(pid_file)
+            .context("reading sandbox parent PID file")?
+            .trim()
+            .parse()
+            .context("parsing sandbox parent PID")?;
+        anyhow::ensure!(
+            pid > 1 && pid != std::process::id() as libc::pid_t,
+            "invalid sandbox parent PID"
+        );
+        let lock_path = runtime_dir().join(format!("{name}.lock"));
+        let owns_lock = std::fs::read_dir(format!("/proc/{pid}/fd"))
+            .context("checking sandbox parent file descriptors")?
+            .filter_map(Result::ok)
+            .any(|fd| std::fs::read_link(fd.path()).is_ok_and(|path| path == lock_path));
+        anyhow::ensure!(owns_lock, "sandbox parent PID is stale");
+        if unsafe { libc::kill(pid, libc::SIGTERM) } != 0 {
+            return Err(std::io::Error::last_os_error()).context("terminating sandbox parent");
+        }
+    } else {
+        result.context("shutting down sandbox")?;
+    }
     Ok(())
 }
 
@@ -258,13 +289,16 @@ fn create_sandbox(
     let hypervisor = hypervisor::new(Some(&config));
     let lock = SandboxLock::try_acquire(&config.name)?
         .context("failed to acquire lock, a sandbox with the same name is already running")?;
+    let sandbox_runtime_dir = runtime_dir().join(&config.name);
     // Create various directories that we need later
-    create_dir(&runtime_dir().join(&config.name))
-        .context("creating runtime directory for sandbox")?;
+    create_dir(&sandbox_runtime_dir).context("creating runtime directory for sandbox")?;
     create_dir(&state_dir()?.join(&config.name)).context("creating state directory for sandbox")?;
     let shares = config::merge_by_name(config.shares.as_ref(), shares);
     validate_socket_path_lengths(&config.name, &shares)?;
 
+    let pid_file = sandbox_runtime_dir.join("blinools.pid");
+    std::fs::write(&pid_file, std::process::id().to_string())
+        .context("writing sandbox parent PID file")?;
     {
         let cgroup = CGroup::create(config.name.as_str(), config.cpus as f64, config.memory_mb);
         let mut network = None;
@@ -306,6 +340,7 @@ fn create_sandbox(
         }
     }
 
+    let _ = std::fs::remove_file(&pid_file);
     // Drop must happen here because delete will try to acquire the lock too
     drop(lock);
     if delete_after_shutdown {
