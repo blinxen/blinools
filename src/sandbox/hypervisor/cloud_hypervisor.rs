@@ -1,7 +1,6 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -10,8 +9,7 @@ use serde_json::json;
 
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
-    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, fs_device_id,
-    guest_cmdline,
+    Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
@@ -38,14 +36,13 @@ impl CloudHypervisor {
     }
 }
 
-impl Hypervisor for CloudHypervisor {
-    fn flavor(&self) -> crate::sandbox::config::Hypervisor {
-        crate::sandbox::config::Hypervisor::CloudHypervisor
+impl Backend for CloudHypervisor {
+    fn name(&self) -> &'static str {
+        "Cloud Hypervisor"
     }
 
-    fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
+    fn configure(&self, config: &VmConfig<'_>, boot: &BootOptions) -> anyhow::Result<Process> {
         let mut mounts: Vec<String> = Vec::new();
-        let cmdline = guest_cmdline(&config);
 
         for mount in config.mounts {
             mounts.push("--fs".into());
@@ -76,11 +73,11 @@ impl Hypervisor for CloudHypervisor {
             .arg("--disk")
             .arg(format!(
                 "path={},image_type=qcow2,backing_files=on",
-                create_qcow2_overlay(&config)?.display()
+                boot.overlay.display()
             ))
             .args(mounts)
             .arg("--cmdline")
-            .arg(cmdline)
+            .arg(&boot.cmdline)
             .arg("--cpus")
             .arg(format!("boot={}", config.cpus))
             .arg("--memory")
@@ -106,15 +103,14 @@ impl Hypervisor for CloudHypervisor {
         };
 
         process
-            .stdin(config.console.stdin)
-            .stdout(config.console.stdout)
-            .stderr(config.console.stderr)
             .remove_on_drop(&api_socket)
             .remove_on_drop(api_socket.with_added_extension("lock"));
 
-        process.spawn().context("spawning cloud-hypervisor")?;
+        Ok(process)
+    }
 
-        Ok(Box::new(CloudHypervisorVm { process }))
+    fn has_fs_hotplug_support(&self) -> bool {
+        true
     }
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool {
@@ -219,16 +215,6 @@ impl Hypervisor for CloudHypervisor {
         }
 
         Ok(())
-    }
-}
-
-pub struct CloudHypervisorVm {
-    process: Process,
-}
-
-impl Vm for CloudHypervisorVm {
-    fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
-        self.process.wait()
     }
 }
 

@@ -1,5 +1,11 @@
+mod backend;
 mod cloud_hypervisor;
+#[allow(clippy::module_inception)]
+mod hypervisor;
 mod qemu;
+
+use self::backend::Backend;
+pub use self::hypervisor::Hypervisor;
 
 use std::fmt;
 use std::os::unix::net::UnixStream;
@@ -19,6 +25,7 @@ use crate::sandbox::fs::FsMount;
 use crate::sandbox::hypervisor::cloud_hypervisor::CloudHypervisor;
 use crate::sandbox::hypervisor::qemu::Qemu;
 use crate::sandbox::name::Name;
+use crate::sandbox::process::Process;
 
 pub struct VmConfig<'sandbox> {
     pub name: &'sandbox Name,
@@ -51,60 +58,45 @@ impl fmt::Display for State {
     }
 }
 
-pub trait Vm {
-    fn wait(&mut self) -> Result<ExitStatus, std::io::Error>;
+pub struct Vm {
+    process: Process,
 }
 
-pub trait Hypervisor {
-    fn flavor(&self) -> config::Hypervisor;
+impl Vm {
+    pub fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
+        self.process.wait()
+    }
+}
 
-    fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error>;
-
-    fn is_running(&self, sandbox_runtime_dir: &Path) -> bool;
-
-    fn shutdown(&self, sandbox_runtime_dir: &Path, force: bool) -> Result<(), anyhow::Error>;
-
-    fn state(&self, sandbox_runtime_dir: &Path) -> State;
-
-    fn attach_fs(
-        &self,
-        sandbox_name: &Name,
-        sandbox_runtime_dir: &Path,
-        tag: &Name,
-        socket_path: &Path,
-    ) -> Result<(), anyhow::Error>;
-
-    fn detach_fs(
-        &self,
-        sandbox_name: &Name,
-        sandbox_runtime_dir: &Path,
-        tag: &Name,
-    ) -> Result<(), anyhow::Error>;
+struct BootOptions {
+    overlay: PathBuf,
+    cmdline: String,
 }
 
 fn fs_device_id(sandbox_name: &Name, tag: &Name) -> String {
     format!("{sandbox_name}-{tag}")
 }
 
-pub fn new(config: Option<&Config>) -> Box<dyn Hypervisor> {
-    if let Some(config) = config
+pub fn new(config: Option<&Config>) -> Hypervisor {
+    let backend: Box<dyn Backend> = if let Some(config) = config
         && config.hypervisor == config::Hypervisor::Qemu
     {
         Box::new(Qemu::new(Some(config)))
     } else {
         Box::new(CloudHypervisor::new(config))
-    }
+    };
+    Hypervisor { backend }
 }
 
-pub fn for_sandbox(config: Option<&Config>, sandbox_runtime_dir: &Path) -> Box<dyn Hypervisor> {
-    let candidates: [Box<dyn Hypervisor>; 2] = [
+pub fn for_sandbox(config: Option<&Config>, sandbox_runtime_dir: &Path) -> Hypervisor {
+    let candidates: [Box<dyn Backend>; 2] = [
         Box::new(CloudHypervisor::new(config)),
         Box::new(Qemu::new(config)),
     ];
 
     for candidate in candidates {
         if candidate.is_running(sandbox_runtime_dir) {
-            return candidate;
+            return Hypervisor { backend: candidate };
         }
     }
 

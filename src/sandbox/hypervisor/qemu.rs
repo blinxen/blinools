@@ -1,6 +1,5 @@
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
-use std::process::ExitStatus;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -9,8 +8,7 @@ use serde_json::{Value, json};
 
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
-    Hypervisor, State, Vm, VmConfig, can_connect_to_socket, create_qcow2_overlay, fs_device_id,
-    guest_cmdline,
+    Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
 use crate::sandbox::process::{Process, remove_stale_socket};
@@ -37,23 +35,18 @@ impl Qemu {
     }
 }
 
-struct QemuVm {
-    process: Process,
-}
-
 #[derive(Deserialize)]
 struct QmpStatus {
     status: String,
 }
 
-impl Hypervisor for Qemu {
-    fn flavor(&self) -> crate::sandbox::config::Hypervisor {
-        crate::sandbox::config::Hypervisor::Qemu
+impl Backend for Qemu {
+    fn name(&self) -> &'static str {
+        "QEMU"
     }
 
-    fn boot(&self, config: VmConfig) -> Result<Box<dyn Vm>, anyhow::Error> {
+    fn configure(&self, config: &VmConfig<'_>, boot: &BootOptions) -> anyhow::Result<Process> {
         let mut mount_args = Vec::new();
-        let cmdline = guest_cmdline(&config);
 
         for mount in config.mounts {
             mount_args.push("-chardev".into());
@@ -72,8 +65,6 @@ impl Hypervisor for Qemu {
 
         let api_socket = socket_path(config.name, SOCKET_NAME);
         remove_stale_socket(&api_socket);
-
-        let overlay = create_qcow2_overlay(&config)?;
 
         let mut process = Process::new(&self.binary, config.cgroup);
         process
@@ -97,7 +88,7 @@ impl Hypervisor for Qemu {
             .arg("-kernel")
             .arg(config.kernel)
             .arg("-append")
-            .arg(cmdline)
+            .arg(&boot.cmdline)
             .arg("-nodefaults")
             .arg("-no-reboot")
             .arg("-no-user-config")
@@ -118,7 +109,7 @@ impl Hypervisor for Qemu {
             .arg("-drive")
             .arg(format!(
                 "id=root,file={},format=qcow2,if=none",
-                overlay.display()
+                boot.overlay.display()
             ))
             .arg("-device")
             .arg("virtio-blk-device,drive=root")
@@ -149,15 +140,13 @@ impl Hypervisor for Qemu {
             process.arg("-d").arg("guest_errors,unimp");
         }
 
-        process
-            .stdin(config.console.stdin)
-            .stdout(config.console.stdout)
-            .stderr(config.console.stderr)
-            .remove_on_drop(&api_socket);
+        process.remove_on_drop(&api_socket);
 
-        process.spawn().context("spawning qemu")?;
+        Ok(process)
+    }
 
-        Ok(Box::new(QemuVm { process }))
+    fn has_fs_hotplug_support(&self) -> bool {
+        false
     }
 
     fn is_running(&self, sandbox_runtime_dir: &Path) -> bool {
@@ -197,17 +186,11 @@ impl Hypervisor for Qemu {
     }
 
     fn attach_fs(&self, _: &Name, _: &Path, _: &Name, _: &Path) -> Result<(), anyhow::Error> {
-        unreachable!("qemu does not support attaching a share on a running sandbox");
+        anyhow::bail!("qemu does not support attaching shares while the sandbox is running")
     }
 
     fn detach_fs(&self, _: &Name, _: &Path, _: &Name) -> Result<(), anyhow::Error> {
-        unreachable!("qemu does not support detaching a share from a running sandbox");
-    }
-}
-
-impl Vm for QemuVm {
-    fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
-        self.process.wait()
+        anyhow::bail!("qemu does not support detaching shares while the sandbox is running")
     }
 }
 

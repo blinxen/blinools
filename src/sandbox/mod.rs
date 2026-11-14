@@ -357,8 +357,10 @@ fn attach_share(
 ) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(&name);
     let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
-    if hypervisor.flavor() == config::Hypervisor::Qemu {
-        eprintln!("Qemu does not support attaching shares while the sandbox is running");
+    if !hypervisor.has_fs_hotplug_support() {
+        eprintln!(
+            "Hypervisor ({hypervisor}) does not support attaching shares while the sandbox is running"
+        );
         return Ok(());
     }
     if !hypervisor.is_running(&sandbox_runtime_dir) {
@@ -419,8 +421,10 @@ fn attach_share(
 fn detach_share(config: config::Config, name: Name, share: Name) -> Result<(), anyhow::Error> {
     let sandbox_runtime_dir = runtime_dir().join(&name);
     let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
-    if hypervisor.flavor() == config::Hypervisor::Qemu {
-        eprintln!("Qemu does not support detaching shares while the sandbox is running");
+    if !hypervisor.has_fs_hotplug_support() {
+        eprintln!(
+            "Hypervisor ({hypervisor}) does not support detaching shares while the sandbox is running"
+        );
         return Ok(());
     }
     if !hypervisor.is_running(&sandbox_runtime_dir) {

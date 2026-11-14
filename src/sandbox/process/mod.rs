@@ -412,8 +412,7 @@ impl Process {
         // close-on-exec flag.
         if unsafe { libc::close_range(3, u32::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int) } != 0
         {
-            return Err(io::Error::last_os_error())
-                .context("set close-on-exec flag on fds");
+            return Err(io::Error::last_os_error()).context("set close-on-exec flag on fds");
         }
 
         if let Some(hook) = self.pre_exec.take() {
