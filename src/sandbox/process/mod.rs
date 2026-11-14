@@ -408,6 +408,14 @@ impl Process {
             unsafe { libc::_exit(1) };
         }
 
+        // 0,1,2 will be overwrriten in the next couple of lines and there we anyway remove the
+        // close-on-exec flag.
+        if unsafe { libc::close_range(3, u32::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int) } != 0
+        {
+            return Err(io::Error::last_os_error())
+                .context("set close-on-exec flag on fds");
+        }
+
         if let Some(hook) = self.pre_exec.take() {
             hook().context("pre_exec")?;
         }
