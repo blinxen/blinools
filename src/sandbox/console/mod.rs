@@ -74,7 +74,7 @@ impl Console {
             signals_mask: None,
         };
 
-        make_raw(console.slave.as_ref().map(|s| s.as_raw_fd()))?;
+        make_raw(slave)?;
         console.refresh_window_size();
         console.signals_mask = Some(Signals::install_handlers_and_mask()?);
 
@@ -319,13 +319,7 @@ struct RawMode {
 
 impl RawMode {
     fn enable(fd: RawFd) -> Result<Self, anyhow::Error> {
-        let mut original: libc::termios = unsafe { std::mem::zeroed() };
-        if unsafe { libc::tcgetattr(fd, &mut original) } != 0 {
-            return Err(io::Error::last_os_error()).context("reading terminal settings");
-        }
-
-        make_raw(Some(fd))?;
-
+        let original = make_raw(fd)?;
         Ok(RawMode { fd, original })
     }
 }
@@ -372,22 +366,20 @@ fn pollfd(fd: RawFd, events: libc::c_short) -> libc::pollfd {
     }
 }
 
-fn make_raw(fd: Option<RawFd>) -> Result<(), anyhow::Error> {
-    if let Some(fd) = fd {
-        let mut settings: libc::termios = unsafe { std::mem::zeroed() };
-        unsafe {
-            if libc::tcgetattr(fd, &mut settings) != 0 {
-                return Err(io::Error::last_os_error()).context("reading terminal settings");
-            }
-            libc::cfmakeraw(&mut settings);
-            if libc::tcsetattr(fd, libc::TCSANOW, &settings) != 0 {
-                return Err(io::Error::last_os_error())
-                    .context("switching the terminal to raw mode");
-            }
+fn make_raw(fd: RawFd) -> Result<libc::termios, anyhow::Error> {
+    let mut original: libc::termios = unsafe { std::mem::zeroed() };
+    unsafe {
+        if libc::tcgetattr(fd, &mut original) != 0 {
+            return Err(io::Error::last_os_error()).context("reading terminal settings");
+        }
+        let mut settings = original;
+        libc::cfmakeraw(&mut settings);
+        if libc::tcsetattr(fd, libc::TCSANOW, &settings) != 0 {
+            return Err(io::Error::last_os_error()).context("switching the terminal to raw mode");
         }
     }
 
-    Ok(())
+    Ok(original)
 }
 
 fn read(fd: RawFd, buffer: &mut [u8]) -> io::Result<usize> {
