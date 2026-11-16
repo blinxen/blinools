@@ -3,16 +3,17 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::sandbox::events::VmEvent;
 use anyhow::Context;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
     Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{Process, remove_stale_socket};
+use crate::sandbox::process::{EVENT_FD, Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
 const CLOUD_HYPERVISOR_API_TIMEOUT: Duration = Duration::from_secs(5);
@@ -59,6 +60,9 @@ impl Backend for CloudHypervisor {
         remove_stale_socket(&api_socket.with_added_extension("lock"));
         let mut process = Process::new(&self.binary, config.cgroup);
         process
+            .arg("--pvpanic")
+            .arg("--event-monitor")
+            .arg(format!("fd={}", EVENT_FD))
             .arg("--api-socket")
             .arg(&api_socket)
             .arg("--log-file")
@@ -215,6 +219,24 @@ impl Backend for CloudHypervisor {
         }
 
         Ok(())
+    }
+
+    fn handle_event(
+        &mut self,
+        event: Value,
+        _stream: &mut UnixStream,
+    ) -> anyhow::Result<Option<VmEvent>> {
+        Ok(Some(
+            match (event["source"].as_str(), event["event"].as_str()) {
+                (Some("guest"), Some("panic")) if event["properties"]["event"] == "panic" => {
+                    VmEvent::KernelPanic
+                }
+                (Some("vm"), Some("paused")) => VmEvent::Paused,
+                (Some("vm"), Some("resumed")) => VmEvent::Resumed,
+                (Some("vm"), Some("shutdown")) => VmEvent::Shutdown,
+                _ => VmEvent::Other(event),
+            },
+        ))
     }
 }
 

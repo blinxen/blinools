@@ -1,10 +1,14 @@
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 
+use serde_json::Value;
+
 use super::{BootOptions, State, VmConfig};
+use crate::sandbox::events::VmEvent;
 use crate::sandbox::name::Name;
 use crate::sandbox::process::Process;
 
-pub(super) trait Backend {
+pub(super) trait Backend: Send {
     fn name(&self) -> &'static str;
 
     fn configure(&self, config: &VmConfig<'_>, boot: &BootOptions) -> anyhow::Result<Process>;
@@ -31,4 +35,10 @@ pub(super) trait Backend {
         sandbox_runtime_dir: &Path,
         tag: &Name,
     ) -> Result<(), anyhow::Error>;
+
+    fn handle_event(
+        &mut self,
+        event: Value,
+        stream: &mut UnixStream,
+    ) -> anyhow::Result<Option<VmEvent>>;
 }

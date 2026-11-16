@@ -1,5 +1,6 @@
 mod backend;
 mod cloud_hypervisor;
+mod event_monitor;
 #[allow(clippy::module_inception)]
 mod hypervisor;
 mod qemu;
@@ -7,6 +8,7 @@ mod qemu;
 use self::backend::Backend;
 pub use self::hypervisor::Hypervisor;
 
+use crate::sandbox::events::EventReceiver;
 use std::fmt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -59,12 +61,20 @@ impl fmt::Display for State {
 }
 
 pub struct Vm {
+    monitor: event_monitor::EventMonitor,
+    events: EventReceiver,
     process: Process,
 }
 
 impl Vm {
+    pub fn events(&self) -> &EventReceiver {
+        &self.events
+    }
+
     pub fn wait(&mut self) -> Result<ExitStatus, std::io::Error> {
-        self.process.wait()
+        let status = self.process.wait();
+        self.monitor.stop();
+        status
     }
 }
 

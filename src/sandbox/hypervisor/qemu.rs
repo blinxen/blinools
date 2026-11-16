@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -6,12 +7,14 @@ use anyhow::Context;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use crate::sandbox::events::VmEvent;
+
 use crate::sandbox::config::Config;
 use crate::sandbox::hypervisor::{
     Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{Process, remove_stale_socket};
+use crate::sandbox::process::{EVENT_FD, Process, remove_stale_socket};
 use crate::sandbox::{socket_path, socket_path_in};
 
 const QMP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -68,6 +71,13 @@ impl Backend for Qemu {
 
         let mut process = Process::new(&self.binary, config.cgroup);
         process
+            .arg("-S")
+            .arg("-device")
+            .arg("pvpanic")
+            .arg("-chardev")
+            .arg(format!("socket,id=events,fd={}", EVENT_FD))
+            .arg("-mon")
+            .arg("chardev=events,mode=control")
             .arg("-machine")
             .arg(format!(
                 "microvm,pit=off,pic=off,isa-serial=off,rtc=off,\
@@ -191,6 +201,45 @@ impl Backend for Qemu {
 
     fn detach_fs(&self, _: &Name, _: &Path, _: &Name) -> Result<(), anyhow::Error> {
         anyhow::bail!("qemu does not support detaching shares while the sandbox is running")
+    }
+
+    fn handle_event(
+        &mut self,
+        message: Value,
+        stream: &mut UnixStream,
+    ) -> anyhow::Result<Option<VmEvent>> {
+        // Handle one time handshake
+        if message.get("QMP").is_some() {
+            stream
+                .write_all(b"{\"execute\":\"qmp_capabilities\",\"id\":\"qmp_capabilities\"}\n")?;
+            return Ok(None);
+        }
+        // Actual events
+        if let Some(event) = message["event"].as_str() {
+            return Ok(Some(match event {
+                "GUEST_PANICKED" => VmEvent::KernelPanic,
+                "GUEST_PVSHUTDOWN" => VmEvent::KernelPanic,
+                "STOP" => VmEvent::Paused,
+                "SUSPEND" => VmEvent::Paused,
+                "RESUME" => VmEvent::Resumed,
+                "SHUTDOWN" => VmEvent::Shutdown,
+                _ => VmEvent::Other(message),
+            }));
+        }
+        // Qemu is started using -S
+        // This prevents qemu to start the VM until we tell it to
+        // The next couple  of lines handles the "ACK" from the server after qmp_capabilities
+        // and then "start" the VM using the cont command.
+        if let Some(command @ ("qmp_capabilities" | "cont")) = message["id"].as_str() {
+            anyhow::ensure!(
+                message.get("return").is_some(),
+                "QMP {command} failed: {message}"
+            );
+            if command == "qmp_capabilities" {
+                stream.write_all(b"{\"execute\":\"cont\",\"id\":\"cont\"}\n")?;
+            }
+        }
+        Ok(None)
     }
 }
 

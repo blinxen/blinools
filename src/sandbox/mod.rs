@@ -1,5 +1,6 @@
 mod cgroup;
 mod console;
+mod events;
 mod fs;
 mod lock;
 mod network;
@@ -13,6 +14,7 @@ use std::{
     ffi::OsStr,
     io::Write,
     path::{Path, PathBuf},
+    process::ExitStatus,
 };
 
 use anyhow::Context;
@@ -281,7 +283,7 @@ fn create_sandbox(
     recreate: bool,
     delete_after_shutdown: bool,
     overrides: CliOverrides,
-) -> Result<(), anyhow::Error> {
+) -> Result<ExitStatus, anyhow::Error> {
     if let Some(name) = name {
         config.name = name;
     }
@@ -299,7 +301,7 @@ fn create_sandbox(
     let pid_file = sandbox_runtime_dir.join("blinools.pid");
     std::fs::write(&pid_file, std::process::id().to_string())
         .context("writing sandbox parent PID file")?;
-    {
+    let result = {
         let cgroup = CGroup::create(config.name.as_str(), config.cpus as f64, config.memory_mb);
         let mut network = None;
         if config.network.mode != config::NetworkMode::None {
@@ -332,13 +334,12 @@ fn create_sandbox(
             console: console.take_slave()?,
         };
         let mut vm = hypervisor.boot(cfg)?;
-        match console.read_until_terminated()? {
-            ConsoleExit::GuestGone => {
-                vm.wait().context("waiting for sandbox to exit")?;
-            }
-            ConsoleExit::Terminated => drop(vm),
+        match console.read_until_terminated(vm.events()) {
+            Ok(ConsoleExit::GuestGone) => vm.wait().context("waiting for sandbox to exit"),
+            Ok(ConsoleExit::Terminated) => Ok(ExitStatus::default()),
+            Err(error) => Err(error),
         }
-    }
+    };
 
     let _ = std::fs::remove_file(&pid_file);
     // Drop must happen here because delete will try to acquire the lock too
@@ -347,7 +348,7 @@ fn create_sandbox(
         delete_sandbox(Some(&config), &config.name, true)?;
     }
 
-    Ok(())
+    result
 }
 
 fn attach_share(

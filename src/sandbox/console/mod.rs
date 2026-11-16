@@ -2,9 +2,11 @@ mod filter;
 mod queue;
 mod signals;
 
+use crate::sandbox::events::{EventReceiver, VmEvent};
 use std::io::{self, IsTerminal};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::TryRecvError;
 
 use anyhow::Context;
 
@@ -64,7 +66,7 @@ impl Console {
             }
         }
 
-        let console = Console {
+        let mut console = Console {
             master: unsafe { OwnedFd::from_raw_fd(master) },
             slave: Some(unsafe { OwnedFd::from_raw_fd(slave) }),
             raw_mode: None,
@@ -74,6 +76,7 @@ impl Console {
 
         make_raw(console.slave.as_ref().map(|s| s.as_raw_fd()))?;
         console.refresh_window_size();
+        console.signals_mask = Some(Signals::install_handlers_and_mask()?);
 
         Ok(console)
     }
@@ -101,15 +104,19 @@ impl Console {
         })
     }
 
-    pub fn read_until_terminated(&mut self) -> Result<ConsoleExit, anyhow::Error> {
-        let result = self.forward_until_terminated();
+    pub fn read_until_terminated(
+        &mut self,
+        events: &EventReceiver,
+    ) -> Result<ConsoleExit, anyhow::Error> {
+        let result = self.forward_until_terminated(events);
         self.restore_terminal();
         result
     }
 
-    fn forward_until_terminated(&mut self) -> Result<ConsoleExit, anyhow::Error> {
-        // Make sure signals are handled properly
-        self.signals_mask = Some(Signals::install_handlers_and_mask()?);
+    fn forward_until_terminated(
+        &mut self,
+        events: &EventReceiver,
+    ) -> Result<ConsoleExit, anyhow::Error> {
         // Put stdin in raw mode so we can let the guest do whatever he wants
         // Not quite, we have some filtering
         if std::io::stdin().is_terminal() {
@@ -135,11 +142,13 @@ impl Console {
         let mut to_guest = FilteredQueue::unfiltered();
         let mut stdin_open = true;
         let mut guest_gone = false;
+        let mut events_open = true;
 
         // The loop reads / polls through stdin, stdout and master and then:
         // * forwards stdin to guest
         // * forwards stdout to master
         loop {
+            Self::read_events(events, &mut events_open)?;
             if TERMINATED.load(Ordering::Relaxed) {
                 return Ok(ConsoleExit::Terminated);
             }
@@ -182,6 +191,10 @@ impl Console {
                 pollfd(std::io::stdin().as_raw_fd(), stdin_events),
                 pollfd(self.master.as_raw_fd(), master_events),
                 pollfd(std::io::stdout().as_raw_fd(), stdout_events),
+                pollfd(
+                    if events_open { events.as_raw_fd() } else { -1 },
+                    libc::POLLIN,
+                ),
             ];
 
             let ready = unsafe {
@@ -198,6 +211,12 @@ impl Console {
                     continue;
                 }
                 return Err(error).context("waiting for guest console activity");
+            }
+
+            // There are events to handle, skip the processing of the current iteration since
+            // the events have precedence.
+            if poll_fds[3].revents != 0 {
+                continue;
             }
 
             // Read whatever the user typed and append it to the to_guest outgoing buffer
@@ -250,6 +269,33 @@ impl Console {
                     .context("writing guest console output")?;
             }
         }
+    }
+
+    fn read_events(events: &EventReceiver, open: &mut bool) -> anyhow::Result<()> {
+        if !*open {
+            return Ok(());
+        }
+        // Each time we read events, we need to clear the wakeup flag since that would otherwise
+        // not change and we won't get woken up again.
+        events.clear_wakeup().context("clearing VM event wakeup")?;
+        loop {
+            match events.try_recv() {
+                Ok(Ok(VmEvent::KernelPanic)) => {
+                    anyhow::bail!("sandbox kernel panicked");
+                }
+                Ok(Ok(VmEvent::Other(event))) => log::debug!("hypervisor event: {event}"),
+                Ok(Ok(event)) => log::debug!("VM event: {event:?}"),
+                Ok(Err(error)) => {
+                    return Err(error).context("hypervisor event monitor failed");
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    *open = false;
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn restore_terminal(&mut self) {

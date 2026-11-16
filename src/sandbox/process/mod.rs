@@ -3,7 +3,7 @@ mod pach_messages;
 use std::convert::Infallible;
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::File;
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::ExitStatusExt;
@@ -32,6 +32,8 @@ const WAIT_TIMEOUT: Duration = Duration::from_millis(200);
 const CLONE_INTO_CGROUP: u64 = 1 << 33;
 
 type Hook = Box<dyn FnOnce() -> Result<(), anyhow::Error>>;
+// I don't want to get a random fd so force 4 for the events
+pub const EVENT_FD: libc::c_int = 3;
 
 pub struct Process {
     binary: PathBuf,
@@ -40,6 +42,7 @@ pub struct Process {
     stdin: Option<OwnedFd>,
     stdout: Option<OwnedFd>,
     stderr: Option<OwnedFd>,
+    eventfd: Option<OwnedFd>,
     // when set to false then we dont create any namespaces
     namespaces: bool,
     // Single hook for now, maybe this can become an array later
@@ -68,6 +71,7 @@ impl Process {
             stdin: None,
             stdout: None,
             stderr: None,
+            eventfd: None,
             namespaces: true,
             pre_exec: None,
             files_to_remove: Vec::new(),
@@ -107,6 +111,11 @@ impl Process {
 
     pub fn stderr(&mut self, fd: OwnedFd) -> &mut Self {
         self.stderr = Some(fd);
+        self
+    }
+
+    pub fn eventfd(&mut self, fd: OwnedFd) -> &mut Self {
+        self.eventfd = Some(fd);
         self
     }
 
@@ -182,8 +191,15 @@ impl Process {
             clone_args.cgroup = cgroup.as_raw_fd() as u64;
         }
 
-        let (mut parent_sock, child_sock) =
+        let (mut parent_sock, mut child_sock) =
             UnixStream::pair().context("create parent-child channel")?;
+        // Ensure child socket FD does not collide with our predefined FD list (0-3 are reserved)
+        if child_sock.as_raw_fd() <= EVENT_FD {
+            child_sock = UnixStream::from(
+                dupfd(child_sock.as_raw_fd(), EVENT_FD + 1)
+                    .context("allocating startup channel above reserved descriptors")?,
+            );
+        }
         parent_sock.set_read_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
         parent_sock.set_write_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
         child_sock.set_read_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
@@ -227,6 +243,7 @@ impl Process {
                 self.stdin.take();
                 self.stdout.take();
                 self.stderr.take();
+                self.eventfd.take();
                 self.pid = Some(pid as libc::pid_t);
 
                 let result = match PachMessage::recv(&mut parent_sock) {
@@ -439,6 +456,10 @@ impl Process {
         for (fd, target) in [(stdin, 0), (stdout, 1), (stderr, 2)] {
             dup2(fd, target).with_context(|| format!("redirecting fd {target}"))?;
         }
+        if let Some(fd) = self.eventfd.as_ref() {
+            dup2(fd.as_raw_fd(), EVENT_FD)
+                .with_context(|| format!("redirecting event descriptor to fd {EVENT_FD}"))?;
+        }
 
         let argv: Vec<CString> = std::iter::once(self.binary.as_os_str())
             .chain(self.args.iter().map(OsString::as_os_str))
@@ -493,6 +514,14 @@ impl Drop for Process {
 
 pub fn remove_stale_socket(socket_path: &Path) {
     let _ = std::fs::remove_file(socket_path);
+}
+
+fn dupfd(fd: libc::c_int, min_fd_number: libc::c_int) -> io::Result<OwnedFd> {
+    let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, min_fd_number) };
+    if duplicate == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(duplicate) })
 }
 
 fn dup2(fd: libc::c_int, target: libc::c_int) -> io::Result<()> {
