@@ -1,5 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
+use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -270,16 +271,15 @@ fn mount_read_only(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-fn mount(
+pub fn mount(
     source: Option<&CStr>,
     target: &CStr,
     filesystem: Option<&CStr>,
     flags: libc::c_ulong,
     data: Option<&CStr>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let pointer = |value: Option<&CStr>| value.map_or(std::ptr::null(), CStr::as_ptr);
-
-    let res = unsafe {
+    let result = unsafe {
         libc::mount(
             pointer(source),
             target.as_ptr(),
@@ -288,9 +288,8 @@ fn mount(
             pointer(data).cast(),
         )
     };
-
-    if res != 0 {
-        return Err(std::io::Error::last_os_error());
+    if result != 0 {
+        return Err(io::Error::last_os_error());
     }
     Ok(())
 }

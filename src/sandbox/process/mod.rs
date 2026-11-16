@@ -18,6 +18,7 @@ use anyhow::Context;
 use crate::config::runtime_dir;
 use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::BinaryConfig;
+use crate::sandbox::fs::mount;
 use crate::sandbox::process::pach_messages::PachMessage;
 
 const SOCKET_READ_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -467,13 +468,14 @@ impl Process {
             std::fs::write("/proc/self/gid_map", format!("0 {gid} 1"))
                 .context("writing gid_map")?;
             // Make sure mounts don't leak outside
-            mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE)
+            mount(None, c"/", None, libc::MS_REC | libc::MS_PRIVATE, None)
                 .context("making mounts private")?;
             mount(
                 Some(c"proc"),
                 c"/proc",
                 Some(c"proc"),
                 libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC,
+                None,
             )
             .context("mounting /proc")?;
             // Hide cgroup root
@@ -598,28 +600,6 @@ fn dup2(fd: libc::c_int, target: libc::c_int) -> io::Result<()> {
         unsafe { libc::dup2(fd, target) }
     };
     if result == -1 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
-
-fn mount(
-    source: Option<&std::ffi::CStr>,
-    target: &std::ffi::CStr,
-    filesystem: Option<&std::ffi::CStr>,
-    flags: libc::c_ulong,
-) -> io::Result<()> {
-    let pointer = |value: Option<&std::ffi::CStr>| value.map_or(std::ptr::null(), |v| v.as_ptr());
-    let result = unsafe {
-        libc::mount(
-            pointer(source),
-            target.as_ptr(),
-            pointer(filesystem),
-            flags,
-            std::ptr::null(),
-        )
-    };
-    if result != 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(())
