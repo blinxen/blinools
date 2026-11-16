@@ -178,15 +178,10 @@ fn isolate_share(
             }
         }
 
-        match share.git_action {
-            Some(GitAction::ReadOnly) => lookup_git_dirs_and_apply_action(&share.host_dir, false),
-            Some(GitAction::Hide) => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-            Some(GitAction::None) => {}
-            None => match git_action {
-                GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
-                GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
-                GitAction::None => {}
-            },
+        match share.git_action.unwrap_or(git_action) {
+            GitAction::ReadOnly => lookup_git_dirs_and_apply_action(&share.host_dir, false),
+            GitAction::Hide => lookup_git_dirs_and_apply_action(&share.host_dir, true),
+            GitAction::None => {}
         }
 
         Ok(())
