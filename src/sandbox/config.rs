@@ -212,11 +212,14 @@ impl garde::Validate for FsShare {
 fn default_sandbox_name() -> Name {
     std::env::current_dir()
         .ok()
-        .and_then(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .and_then(Name::sanitize)
-        })
+        .map(|path| name_from_directory(&path))
+        .unwrap_or_else(Name::randomized)
+}
+
+fn name_from_directory(path: &Path) -> Name {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .and_then(Name::sanitize)
         .unwrap_or_else(Name::randomized)
 }
 
@@ -229,7 +232,7 @@ where
     D: Deserializer<'de>,
 {
     let raw = PathBuf::deserialize(deserializer)?;
-    std::fs::canonicalize(&raw).map_err(serde::de::Error::custom)
+    canonicalize_path(&raw).map_err(serde::de::Error::custom)
 }
 
 fn deserialize_absolute_paths<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
@@ -238,7 +241,7 @@ where
 {
     let raw = Vec::<PathBuf>::deserialize(deserializer)?;
     raw.into_iter()
-        .map(|p| std::fs::canonicalize(&p).map_err(serde::de::Error::custom))
+        .map(|p| canonicalize_path(&p).map_err(serde::de::Error::custom))
         .collect()
 }
 
@@ -304,9 +307,14 @@ pub fn merge_by_name(base: Option<&Vec<FsShare>>, overrides: Vec<FsShare>) -> Ve
     shares
 }
 
+fn canonicalize_path(path: &Path) -> Result<PathBuf, String> {
+    std::fs::canonicalize(path)
+        .map_err(|error| format!("could not make `{}` absolute: {error}", path.display()))
+}
+
 // Used only by clap parser
 pub fn parse_existing_path(s: &str) -> Result<PathBuf, String> {
-    std::fs::canonicalize(s).map_err(|error| format!("could not make `{s}` absolute: {error}"))
+    canonicalize_path(Path::new(s))
 }
 
 // Used only by clap parser
@@ -329,15 +337,10 @@ pub fn parse_share(s: &str) -> Result<FsShare, String> {
         Some(other) => return Err(format!("invalid mode `{other}`, expected `ro` or `rw`")),
     };
 
-    let host_dir =
-        std::fs::canonicalize(path).map_err(|_| String::from("could not make path absolute"))?;
+    let host_dir = parse_existing_path(path)?;
     let name = match name {
         Some(name) => Name::new(name).map_err(|error| format!("invalid share {error}"))?,
-        None => host_dir
-            .file_name()
-            .and_then(|name| name.to_str())
-            .and_then(Name::sanitize)
-            .unwrap_or_else(Name::randomized),
+        None => name_from_directory(&host_dir),
     };
 
     let share = FsShare {

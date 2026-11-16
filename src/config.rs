@@ -84,14 +84,22 @@ fn parse_config_with(
     global_file: Option<&PathBuf>,
     project_file: Option<&str>,
 ) -> Result<Config, anyhow::Error> {
+    let load = |source| {
+        config::Config::builder()
+            .add_source(source)
+            .build()
+            .context("reading config file")
+    };
+    let global = global_file
+        .map(|path| load(config::File::from(path.clone()).required(false)))
+        .transpose()?;
+    let project = project_file
+        .map(|path| load(config::File::with_name(path).required(true)))
+        .transpose()?;
+
     let mut builder = config::Config::builder();
-
-    if let Some(global_file) = global_file {
-        builder = builder.add_source(config::File::from(global_file.clone()).required(false));
-    }
-
-    if let Some(project_file) = project_file {
-        builder = builder.add_source(config::File::with_name(project_file).required(true));
+    for source in global.iter().chain(project.iter()) {
+        builder = builder.add_source(source.clone());
     }
 
     let mut config: Config = builder
@@ -100,14 +108,10 @@ fn parse_config_with(
         .try_deserialize()
         .context("parsing config file")?;
 
-    if let (Some(sandbox), Some(global_file), Some(project_file)) =
-        (config.sandbox.as_mut(), global_file, project_file)
+    if let (Some(sandbox), Some(global), Some(project)) =
+        (config.sandbox.as_mut(), global.as_ref(), project.as_ref())
     {
-        sandbox.shares = Some(resolve_shares(
-            sandbox.inherit_shares,
-            global_file,
-            project_file,
-        )?);
+        sandbox.shares = Some(resolve_shares(sandbox.inherit_shares, global, project)?);
     }
 
     config.validate().context("validating config file")?;
@@ -116,12 +120,12 @@ fn parse_config_with(
 
 fn resolve_shares(
     inherit_shares: bool,
-    global_file: &Path,
-    project_file: &str,
+    global: &config::Config,
+    project: &config::Config,
 ) -> Result<Vec<FsShare>, anyhow::Error> {
-    let overrides = shares_from(config::File::with_name(project_file).required(true))?;
+    let overrides = shares_from(project)?;
     let inherited = if inherit_shares {
-        shares_from(config::File::from(global_file.to_path_buf()).required(false))?
+        shares_from(global)?
     } else {
         None
     };
@@ -132,16 +136,8 @@ fn resolve_shares(
     ))
 }
 
-fn shares_from<S>(source: S) -> Result<Option<Vec<FsShare>>, anyhow::Error>
-where
-    S: config::Source + Send + Sync + 'static,
-{
-    match config::Config::builder()
-        .add_source(source)
-        .build()
-        .context("reading config file")?
-        .get::<Vec<FsShare>>("sandbox.shares")
-    {
+fn shares_from(config: &config::Config) -> Result<Option<Vec<FsShare>>, anyhow::Error> {
+    match config.get::<Vec<FsShare>>("sandbox.shares") {
         Ok(shares) => Ok(Some(shares)),
         Err(config::ConfigError::NotFound(_)) => Ok(None),
         Err(error) => anyhow::bail!("parsing shares : {}", error),
