@@ -437,8 +437,8 @@ fn detach_share(config: config::Config, name: Name, share: Name) -> Result<(), a
         .context("detaching share")?;
 
     crate::sandbox::fs::stop_share(&name, &share);
-    process::remove_stale_socket(&share_socket_path(&name, &share));
-    process::remove_stale_socket(&share_pid_path(&name, &share));
+    let _ = std::fs::remove_file(share_socket_path(&name, &share));
+    let _ = std::fs::remove_file(share_pid_path(&name, &share));
 
     println!("The share has been detached, accessing it in the sandbox fails from now on.");
     println!("Remove the mount in the sandbox using: umount -l <mount point>");

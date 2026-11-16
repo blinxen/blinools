@@ -18,12 +18,6 @@ impl Pasta {
     ) -> Result<Pasta, anyhow::Error> {
         let socket_path = socket_path(&config.name, "pasta");
         let pid_path = socket_path.with_extension("pid");
-        let mut binary_path = PathBuf::from("pasta");
-        if let Some(cfg) = &config.pasta
-            && let Some(binary) = &cfg.binary
-        {
-            binary_path = binary.to_path_buf();
-        }
         let mut dns_config: Vec<&str> = Vec::new();
         if let Some(dns) = &config.dns {
             for d in dns {
@@ -32,7 +26,7 @@ impl Pasta {
             }
         }
 
-        let mut process = Process::new(binary_path, cgroup);
+        let mut process = Process::new("pasta", config.pasta.as_ref(), cgroup);
         process
             .args([
                 "--log-file",
@@ -76,7 +70,8 @@ impl Pasta {
         process.arg(passt_pid.to_string());
 
         // pasta has to stay in the host namespaces to reach the network and join passt
-        process.no_namespaces().remove_on_drop(&pid_path);
+        process.no_namespaces();
+        process.prepare_runtime_file(&pid_path)?;
         process.spawn().context("spawning pasta")?;
 
         Ok(Pasta { process, pid_path })

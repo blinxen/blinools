@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -9,12 +9,12 @@ use serde_json::{Value, json};
 
 use crate::sandbox::events::VmEvent;
 
-use crate::sandbox::config::Config;
+use crate::sandbox::config::{BinaryConfig, Config};
 use crate::sandbox::hypervisor::{
     Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{EVENT_FD, Process, remove_stale_socket};
+use crate::sandbox::process::{EVENT_FD, Process, set_socket_timeouts};
 use crate::sandbox::{socket_path, socket_path_in};
 
 const QMP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -22,18 +22,12 @@ const MEMORY_BACKEND: &str = "guest-memory";
 pub const SOCKET_NAME: &str = "qemu-qmp";
 
 pub struct Qemu {
-    binary: PathBuf,
+    binary: Option<BinaryConfig>,
 }
 
 impl Qemu {
     pub fn new(config: Option<&Config>) -> Self {
-        let mut binary = PathBuf::from("qemu-system-x86_64");
-        if let Some(config) = config
-            && let Some(qemu) = config.qemu.as_ref()
-            && let Some(configured) = qemu.binary.as_ref()
-        {
-            binary = configured.to_path_buf();
-        }
+        let binary = config.and_then(|config| config.qemu.clone());
         Qemu { binary }
     }
 }
@@ -67,9 +61,8 @@ impl Backend for Qemu {
         }
 
         let api_socket = socket_path(config.name, SOCKET_NAME);
-        remove_stale_socket(&api_socket);
 
-        let mut process = Process::new(&self.binary, config.cgroup);
+        let mut process = Process::new("qemu-system-x86_64", self.binary.as_ref(), config.cgroup);
         process
             .arg("-S")
             .arg("-device")
@@ -150,7 +143,7 @@ impl Backend for Qemu {
             process.arg("-d").arg("guest_errors,unimp");
         }
 
-        process.remove_on_drop(&api_socket);
+        process.prepare_runtime_file(&api_socket)?;
 
         Ok(process)
     }
@@ -260,12 +253,7 @@ fn qmp_with_timeout(
 ) -> Result<Value, anyhow::Error> {
     let mut stream = UnixStream::connect(socket_path)
         .with_context(|| format!("connecting to qmp socket at {}", socket_path.display()))?;
-    stream
-        .set_read_timeout(Some(timeout))
-        .context("setting a read timeout on the qmp socket")?;
-    stream
-        .set_write_timeout(Some(timeout))
-        .context("setting a write timeout on the qmp socket")?;
+    set_socket_timeouts(&stream, timeout, "qmp")?;
 
     let mut responses =
         serde_json::Deserializer::from_reader(stream.try_clone()?).into_iter::<Value>();

@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use crate::sandbox::events::VmEvent;
@@ -8,12 +8,12 @@ use anyhow::Context;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::sandbox::config::Config;
+use crate::sandbox::config::{BinaryConfig, Config};
 use crate::sandbox::hypervisor::{
     Backend, BootOptions, State, VmConfig, can_connect_to_socket, fs_device_id,
 };
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{EVENT_FD, Process, remove_stale_socket};
+use crate::sandbox::process::{EVENT_FD, Process, set_socket_timeouts};
 use crate::sandbox::{socket_path, socket_path_in};
 
 const CLOUD_HYPERVISOR_API_TIMEOUT: Duration = Duration::from_secs(5);
@@ -21,18 +21,12 @@ const MAX_API_RESPONSE_LENGTH: usize = 64 * 1024;
 pub const SOCKET_NAME: &str = "cloud-hypervisor";
 
 pub struct CloudHypervisor {
-    binary: PathBuf,
+    binary: Option<BinaryConfig>,
 }
 
 impl CloudHypervisor {
     pub fn new(config: Option<&Config>) -> Self {
-        let mut binary = PathBuf::from("cloud-hypervisor");
-        if let Some(config) = config
-            && let Some(cloud_hypervisor) = config.cloud_hypervisor.as_ref()
-            && let Some(configured) = cloud_hypervisor.binary.as_ref()
-        {
-            binary = configured.to_path_buf();
-        }
+        let binary = config.and_then(|config| config.cloud_hypervisor.clone());
         CloudHypervisor { binary }
     }
 }
@@ -56,9 +50,7 @@ impl Backend for CloudHypervisor {
         }
 
         let api_socket = socket_path(config.name, SOCKET_NAME);
-        remove_stale_socket(&api_socket);
-        remove_stale_socket(&api_socket.with_added_extension("lock"));
-        let mut process = Process::new(&self.binary, config.cgroup);
+        let mut process = Process::new("cloud-hypervisor", self.binary.as_ref(), config.cgroup);
         process
             .arg("--pvpanic")
             .arg("--event-monitor")
@@ -106,9 +98,8 @@ impl Backend for CloudHypervisor {
             process.arg("-v");
         };
 
-        process
-            .remove_on_drop(&api_socket)
-            .remove_on_drop(api_socket.with_added_extension("lock"));
+        process.prepare_runtime_file(&api_socket)?;
+        process.prepare_runtime_file(api_socket.with_added_extension("lock"))?;
 
         Ok(process)
     }
@@ -283,12 +274,7 @@ fn api_with_timeout(
 ) -> Result<ApiResponse, anyhow::Error> {
     let mut stream =
         UnixStream::connect(socket_path).context("connecting to cloud hypervisor socket")?;
-    stream
-        .set_read_timeout(Some(timeout))
-        .context("setting a read timeout on the cloud hypervisor socket")?;
-    stream
-        .set_write_timeout(Some(timeout))
-        .context("setting a write timeout on the cloud hypervisor socket")?;
+    set_socket_timeouts(&stream, timeout, "cloud hypervisor")?;
     // Request
     let mut request =
         format!("{method} /api/v1/{path} HTTP/1.1\r\nHost: localhost\r\nAccept: */*\r\n");

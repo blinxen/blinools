@@ -112,7 +112,7 @@ pub struct Config {
     pub qemu: Option<BinaryConfig>,
 }
 
-#[derive(Deserialize, Validate)]
+#[derive(Clone, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct BinaryConfig {
     #[garde(custom(file_exists_optional))]

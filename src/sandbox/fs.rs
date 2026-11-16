@@ -9,7 +9,7 @@ use anyhow::Context;
 use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
-use crate::sandbox::process::{Process, remove_stale_socket};
+use crate::sandbox::process::Process;
 use crate::sandbox::socket_path;
 
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
@@ -59,15 +59,7 @@ impl FsMount {
         standalone: bool,
     ) -> Result<Self, anyhow::Error> {
         let socket_path = share_socket_path(&config.name, &share.name);
-        remove_stale_socket(&socket_path);
-        let mut binary_path = PathBuf::from("virtiofsd");
-        if let Some(cfg) = &config.virtiofsd
-            && let Some(binary) = &cfg.binary
-        {
-            binary_path = binary.to_path_buf();
-        }
-
-        let mut process = Process::new(binary_path, cgroup);
+        let mut process = Process::new("virtiofsd", config.virtiofsd.as_ref(), cgroup);
         process
             .arg("--socket-path")
             .arg(&socket_path)
@@ -133,7 +125,7 @@ impl FsMount {
             overrides.clone(),
         );
 
-        process.remove_on_drop(&socket_path);
+        process.prepare_runtime_file(&socket_path)?;
         process.spawn().context("spawning virtiofsd")?;
         // Never use wait_for_socket since virtiofsd only accepts a single connection
         process

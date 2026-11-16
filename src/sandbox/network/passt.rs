@@ -6,12 +6,7 @@ use std::{
 use anyhow::Context;
 
 use crate::sandbox::{
-    cgroup::CGroup,
-    config,
-    config::Config,
-    network::firewall,
-    process::{Process, remove_stale_socket},
-    socket_path,
+    cgroup::CGroup, config, config::Config, network::firewall, process::Process, socket_path,
 };
 
 pub struct Passt {
@@ -24,14 +19,6 @@ impl Passt {
     /// Leaves passt isolated, `exec` has to be called once pasta is attached to its namespaces
     pub fn new(config: &Config, cgroup: Option<&CGroup>) -> Result<Passt, anyhow::Error> {
         let socket_path = socket_path(&config.name, "passt");
-        remove_stale_socket(&socket_path);
-
-        let mut binary_path = PathBuf::from("passt");
-        if let Some(cfg) = &config.passt
-            && let Some(binary) = &cfg.binary
-        {
-            binary_path = binary.to_path_buf();
-        }
         let mut dns_config: Vec<&str> = Vec::new();
         if let Some(dns) = &config.dns {
             for d in dns {
@@ -40,7 +27,7 @@ impl Passt {
             }
         }
 
-        let mut process = Process::new(binary_path, cgroup);
+        let mut process = Process::new("passt", config.passt.as_ref(), cgroup);
         process
             .args([
                 "--vhost-user",
@@ -84,7 +71,7 @@ impl Passt {
             process.pre_exec(|| firewall::install(dns, exceptions));
         }
 
-        process.remove_on_drop(&socket_path);
+        process.prepare_runtime_file(&socket_path)?;
         process.isolate().context("starting passt")?;
         let pid = process.pid().context("passt has no pid")?;
 

@@ -15,7 +15,9 @@ use std::{fmt, io};
 
 use anyhow::Context;
 
+use crate::config::runtime_dir;
 use crate::sandbox::cgroup::CGroup;
+use crate::sandbox::config::BinaryConfig;
 use crate::sandbox::process::pach_messages::PachMessage;
 
 const SOCKET_READ_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
@@ -34,6 +36,27 @@ const CLONE_INTO_CGROUP: u64 = 1 << 33;
 type Hook = Box<dyn FnOnce() -> Result<(), anyhow::Error>>;
 // I don't want to get a random fd so force 3 for the events
 pub const EVENT_FD: libc::c_int = 3;
+
+pub fn read_pid_file(path: &Path, process: &str) -> anyhow::Result<libc::pid_t> {
+    std::fs::read_to_string(path)
+        .with_context(|| format!("reading {process} PID file"))?
+        .trim()
+        .parse()
+        .with_context(|| format!("parsing {process} PID"))
+}
+
+pub fn set_socket_timeouts(
+    stream: &UnixStream,
+    timeout: Duration,
+    name: &str,
+) -> anyhow::Result<()> {
+    stream
+        .set_read_timeout(Some(timeout))
+        .with_context(|| format!("setting a read timeout on the {name} socket"))?;
+    stream
+        .set_write_timeout(Some(timeout))
+        .with_context(|| format!("setting a write timeout on the {name} socket"))
+}
 
 pub struct Process {
     binary: PathBuf,
@@ -63,9 +86,16 @@ pub struct Process {
 }
 
 impl Process {
-    pub fn new(binary: impl AsRef<Path>, cgroup: Option<&CGroup>) -> Self {
+    pub fn new(
+        default_binary: impl AsRef<Path>,
+        configured_binary: Option<&BinaryConfig>,
+        cgroup: Option<&CGroup>,
+    ) -> Self {
         Process {
-            binary: binary.as_ref().to_path_buf(),
+            binary: configured_binary
+                .and_then(|config| config.binary.as_deref())
+                .unwrap_or_else(|| default_binary.as_ref())
+                .to_path_buf(),
             args: Vec::new(),
             cgroup: cgroup.map(|cgroup| cgroup.path().to_path_buf()),
             stdin: None,
@@ -138,6 +168,32 @@ impl Process {
         self
     }
 
+    pub fn prepare_runtime_file(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<&mut Self, anyhow::Error> {
+        let path = path.as_ref();
+        let runtime_dir = runtime_dir();
+        let (canon_path, canon_runtime_dir) = if path.exists() {
+            (
+                path.canonicalize().context("resolving runtime file")?,
+                runtime_dir
+                    .canonicalize()
+                    .context("resolving runtime directory")?,
+            )
+        } else {
+            (path.to_path_buf(), runtime_dir)
+        };
+        anyhow::ensure!(
+            canon_path.starts_with(&canon_runtime_dir),
+            "runtime file {} is outside {}",
+            canon_path.display(),
+            canon_runtime_dir.display()
+        );
+        let _ = std::fs::remove_file(&canon_path);
+        Ok(self.remove_on_drop(canon_path))
+    }
+
     pub fn kill_with_parent(&mut self, kill: bool) -> &mut Self {
         self.kill_with_parent = kill;
         self
@@ -200,10 +256,24 @@ impl Process {
                     .context("allocating startup channel above reserved descriptors")?,
             );
         }
-        parent_sock.set_read_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
-        parent_sock.set_write_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
-        child_sock.set_read_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
-        child_sock.set_write_timeout(Some(SOCKET_READ_WRITE_TIMEOUT))?;
+        set_socket_timeouts(
+            &parent_sock,
+            SOCKET_READ_WRITE_TIMEOUT,
+            &self
+                .binary
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+        )?;
+        set_socket_timeouts(
+            &child_sock,
+            SOCKET_READ_WRITE_TIMEOUT,
+            &self
+                .binary
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy(),
+        )?;
         log::debug!(
             "Starting command: {} {:?}",
             self.binary.display(),
@@ -512,10 +582,6 @@ impl Drop for Process {
     }
 }
 
-pub fn remove_stale_socket(socket_path: &Path) {
-    let _ = std::fs::remove_file(socket_path);
-}
-
 fn dupfd(fd: libc::c_int, min_fd_number: libc::c_int) -> io::Result<OwnedFd> {
     let duplicate = unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, min_fd_number) };
     if duplicate == -1 {
@@ -565,7 +631,7 @@ mod tests {
     use tempfile::tempdir;
 
     fn sh(script: &str) -> Process {
-        let mut process = Process::new("sh", None);
+        let mut process = Process::new("sh", None, None);
         process.arg("-c").arg(script);
         process
     }
@@ -580,7 +646,7 @@ mod tests {
 
     #[test]
     fn a_missing_binary_fails_spawn() {
-        let error = Process::new("blinools-does-not-exist", None)
+        let error = Process::new("blinools-does-not-exist", None, None)
             .spawn()
             .expect_err("exec has to fail");
 
