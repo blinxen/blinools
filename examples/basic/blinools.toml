@@ -1,0 +1,8 @@
+[sandbox]
+virtiofsd.binary = "/usr/libexec/virtiofsd"
+
+kernel = "./kernel"
+kernel_cmdline = "quiet"
+rootfs = "./rootfs.img"
+memory_mb = 8192
+cpus = 4

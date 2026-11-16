@@ -46,7 +46,7 @@ Generate shell completion registration scripts
 
 # CONFIGURATION
 
-Sandbox commands read a global configuration file, then ./blinools.toml. Both are optional. Use **-c FILE** or **--config FILE** to select a different project file. See [blinools.toml(5)](../configuration.md) for the options and for how the files are combined.
+Worktree and sandbox commands read a global configuration file, then ./blinools.toml. Both are optional. Use **-c FILE** or **--config FILE** to select a different project file. See [blinools.toml(5)](../configuration.md) for the options and for how the files are combined.
 
 # FILES
 

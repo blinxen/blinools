@@ -47,7 +47,7 @@
 
 ### Added
 
-* Add `network.exceptions` to allow individual destinations in blocked ranges in `Restricted` mode. An exception is an IPv4 or IPv6 address, a CIDR range or a hostname, optionally limited to one destination port. Hostnames are resolved when the sandbox starts; duplicate network-and-port entries are merged.
+* Add `network.exceptions` to allow individual destinations in blocked ranges in `Restricted` mode. An exception is an IPv4 or IPv6 address, a CIDR range or a hostname, optionally limited to one destination port. Hostnames are resolved when the sandbox starts. Duplicate network-and-port entries are merged.
 * Add man pages for every command and for the configuration file. Release archives include the pages under `man/man1` and `man/man5`.
 * Add a browser readable CLI reference in `docs/cli`, generated from the command man pages.
 

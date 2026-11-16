@@ -9,6 +9,7 @@ explains how it is built.
 
 `sandbox create` needs a `[sandbox]` table in your configuration,
 see [configuration.md](configuration.md).
+All sandbox commands require an interactive terminal on standard input.
 
 ## Requirements
 
@@ -113,10 +114,12 @@ With Cloud Hypervisor, you can add or remove a share while the sandbox is runnin
 
 ```bash
 blinools sandbox attach-share work /path/to/dir
-blinools sandbox detach-share work /path/to/dir
+blinools sandbox detach-share work dir
 ```
 
 `attach-share` does not mount the share inside the guest. It prints the command to run in the sandbox.
+`detach-share` takes the share name, which defaults to the directory's name when attaching.
+After detaching, remove the guest mount with `umount -l <mount point>`.
 Shares added by `create` can be detached as well, and `sandbox ps` lists the attached shares.
 Both commands are not available with QEMU. See the
 [attach-share](cli/blinools-sandbox-attach-share.md) and
@@ -161,7 +164,7 @@ ip_or_range_or_hostname = "100.64.0.0/10"
 
 ## Git integration
 
-The [configuration reference](configuration.md#options) defines the `git_action` values.
+The [configuration reference](configuration.md#sandbox-options) defines the `git_action` values.
 The default, `ReadOnly`, protects existing `.git` entries while leaving the working tree
 writable. For scanning and worktree limitations, see
 [Git integration](sandbox_architecture.md#git-integration).

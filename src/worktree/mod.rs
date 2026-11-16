@@ -14,7 +14,8 @@ use crate::worktree::config::Config;
 pub enum Command {
     /// Create a WIP (work-in-progress) branch from HEAD and check it out in a new worktree.
     ///
-    /// The branch is created as <type>-<task-number>-<branch-name>.
+    /// With --type and --task-number, the branch is created as <type>-<task-number>-<branch-name>.
+    /// Omitting --task-number gives <type>-<branch-name>. Omitting both gives <branch-name>.
     /// If the branch already exists, it is not created again and the existing branch
     /// is checked out in the new worktree.
     /// The worktree is created at <wip_prefix>_<branch-name> under the repository root,
@@ -25,13 +26,13 @@ pub enum Command {
         after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools worktree wip fix-login --type bug --task-number 123"
     )]
     Wip {
-        /// Branch name
+        /// Branch name (5 to 50 characters, valid Git branch syntax)
         #[arg(value_parser = parse_branch_name)]
         branch_name: String,
-        /// Ticket type
+        /// Ticket type, from worktree.types in the configuration
         #[arg(short = 't', long = "type")]
         branch_type: Option<String>,
-        /// Task number (requires --type)
+        /// Task number, containing only digits (requires --type)
         #[arg(
             short = 'n',
             long = "task-number",

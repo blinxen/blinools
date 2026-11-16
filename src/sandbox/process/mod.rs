@@ -32,7 +32,7 @@ const WAIT_TIMEOUT: Duration = Duration::from_millis(200);
 const CLONE_INTO_CGROUP: u64 = 1 << 33;
 
 type Hook = Box<dyn FnOnce() -> Result<(), anyhow::Error>>;
-// I don't want to get a random fd so force 4 for the events
+// I don't want to get a random fd so force 3 for the events
 pub const EVENT_FD: libc::c_int = 3;
 
 pub struct Process {

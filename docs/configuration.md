@@ -26,22 +26,25 @@ and a key that is missing from both gets its default.
 
 ## The worktree table
 
-### Options
+### Worktree options
 
-- `types` (array of string): List of valid types to create worktrees for. This
-  defines what the `--type` flag accepts or what the interactive selector shows.
+- `types` (array of string): List of valid types accepted by `worktree wip --type`.
+  Omitting `--type` uses the supplied branch name as-is.
   The default is `["task", "bug"]`.
 - `wip_prefix` (string): Prefix of the directory created by `worktree wip`.
   The default is `"wip-pr"`.
 - `review_prefix` (string): Prefix of the directory created by `worktree review`.
   The default is `"pr-review"`.
 
-Worktrees are created under the repository root in a directory named `<PREFIX>_<BRANCH>`.
-The prefix and the branch name are separated by an underscore,
-and any `/` in the branch name is replaced by a hyphen.
-For example, with the default configuration the branch `feature/login` is checked out in
-`wip-pr_feature-login` by `worktree wip` and in `pr-review_feature-login` by
-`worktree review`.
+Worktrees are created under the main repository root. `worktree wip` names the
+directory `<wip_prefix>_<BRANCH_NAME>`, using only the supplied `BRANCH_NAME`.
+`--type` and `--task-number` affect the Git branch name, but not the directory name.
+For example, `worktree wip fix-login --type bug --task-number 123` checks out
+`bug-123-fix-login` in `wip-pr_fix-login` with the default configuration.
+
+`worktree review` uses `<review_prefix>_<BRANCH_NAME>` with the existing branch's
+full name. Both commands replace `/` with `-` in directory names, so reviewing
+`feature/login` creates `pr-review_feature-login`.
 
 ### Examples
 
@@ -73,7 +76,7 @@ Allowed characters are:
 * hyphens (not at the beginning)
 * underscores
 
-### Options
+### Sandbox options
 
 - `name` (string): The sandbox name. By default it is derived from the current
   directory, with unsupported characters replaced by hyphens and the name shortened
@@ -185,7 +188,7 @@ Each share table has the following options:
   To make `host_dir` itself read-only, use `read_only = true`.
 - `hidden_paths` (array of paths): Paths to hide from the sandbox.
   The same rules as `read_only_paths` apply.
-- `git_action` (enum): Override the [sandbox default](#options) for this share.
+- `git_action` (enum): Override the [sandbox default](#sandbox-options) for this share.
 
 ### Command line overrides
 

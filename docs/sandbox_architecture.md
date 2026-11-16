@@ -52,7 +52,11 @@ Writes to shared directories affect host files, writes to guest tmpfs are tempor
 The kernel command line starts with
 `console=hvc0 root=/dev/vda rw systemd.hostname=<name>`, followed by `kernel_cmdline`
 and any share mount instructions.
-The configuration reference describes the [accepted kernel arguments](configuration.md#options).
+The configuration reference describes the [accepted kernel arguments](configuration.md#sandbox-options).
+
+An existing overlay must refer to the configured rootfs path and format.
+If either changes, startup fails with a request to use `--recreate`.
+Recreating discards the saved guest disk changes.
 
 ### Console and your terminal
 
@@ -78,6 +82,12 @@ access to the host network and joins passt's network namespace to connect the tw
 
 On entering the sandbox command handler, blinools sets `PR_SET_NO_NEW_PRIVS` before any cloning.
 This prevents execution from gaining privileges through setuid/setgid bits or file capabilities.
+
+The launchers also enable the VMMs' sandbox options:
+
+* Cloud Hypervisor uses seccomp and Landlock
+* QEMU enables its `-sandbox` restrictions
+* virtiofsd runs with its namespace sandbox and seccomp action set to `kill`
 
 ### Resource confinement
 
@@ -149,7 +159,7 @@ settings for an individual run.
 
 ### Git integration
 
-The [configuration reference](configuration.md#options) defines `git_action` and
+The [configuration reference](configuration.md#sandbox-options) defines `git_action` and
 [per-share overrides](configuration.md#shares).
 
 Before virtiofsd serves a share, blinools walks its directory tree without following
@@ -169,7 +179,7 @@ determined by that share's settings and any `.git` entry found during its own sc
 
 | Path | Contents | Lifetime |
 | --- | --- | --- |
-| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Hypervisor control socket, passt socket, pasta PID file, virtiofsd sockets and logs (`passt.log`, `pasta.log`, `vfsd-<share>.log`) | On normal shutdown, helpers cleanup removes sockets and the PID file. The directory and logs remain until deletion or pruning. |
+| `$XDG_RUNTIME_DIR/blinools/<name>/` (or `/run/user/<uid>/blinools/<name>/`) | Hypervisor control socket and log, passt socket, `pasta.pid`, `blinools.pid`, virtiofsd sockets, hotplugged share PID files, and helper logs (`passt.log`, `pasta.log`, `vfsd-<share>.log`) | Processes owned by `create` remove their registered sockets and PID files on normal cleanup. The directory and logs remain until deletion or pruning. |
 | `$XDG_RUNTIME_DIR/blinools/<name>.lock` | Empty lock file used while an operation holds the sandbox lock | Removed when the holder exits normally, a crash can leave an unlocked file |
 | `$XDG_STATE_HOME/blinools/<name>/` (or `~/.local/state/blinools/<name>/`) | qcow2 overlay storing changes to the guest root disk | Persists across boots, deletion or pruning removes it, and `--recreate` replaces it |
 
