@@ -18,13 +18,6 @@ impl Pasta {
     ) -> Result<Pasta, anyhow::Error> {
         let socket_path = socket_path(&config.name, "pasta");
         let pid_path = socket_path.with_extension("pid");
-        let mut dns_config: Vec<&str> = Vec::new();
-        if let Some(dns) = &config.dns {
-            for d in dns {
-                dns_config.push("--dns");
-                dns_config.push(d);
-            }
-        }
 
         let mut process = Process::new("pasta", config.pasta.as_ref(), cgroup);
         process
@@ -33,32 +26,16 @@ impl Pasta {
                 &socket_path.with_extension("log").display().to_string(),
                 "--pid",
                 &pid_path.display().to_string(),
-                "--foreground",
-                "--no-icmp",
-                "--no-map-gw",
-                "--map-host-loopback",
-                "none",
-                "--map-guest-addr",
-                "none",
-                "-t",
-                "none",
-                "-u",
-                "none",
                 "-T",
                 "none",
                 "-U",
                 "none",
-                "--address",
-                "10.200.0.2",
-                "--netmask",
-                "24",
-                "--gateway",
-                "10.200.0.1",
                 "--no-splice",
                 "--config-net",
                 "--no-netns-quit",
             ])
-            .args(dns_config);
+            .args(super::common_args())
+            .args(super::dns_args(config));
 
         if log::log_enabled!(log::Level::Debug) {
             process.arg("--debug");

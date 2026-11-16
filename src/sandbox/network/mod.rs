@@ -8,6 +8,37 @@ use anyhow::Context;
 
 use crate::sandbox::{cgroup::CGroup, config::Config};
 
+pub(super) fn dns_args(config: &Config) -> Vec<String> {
+    config
+        .dns
+        .iter()
+        .flatten()
+        .flat_map(|dns| [String::from("--dns"), dns.clone()])
+        .collect()
+}
+
+pub(super) fn common_args() -> Vec<&'static str> {
+    vec![
+        "--foreground",
+        "--no-icmp",
+        "--no-map-gw",
+        "--map-host-loopback",
+        "none",
+        "--map-guest-addr",
+        "none",
+        "-t",
+        "none",
+        "-u",
+        "none",
+        "--address",
+        "10.200.0.2",
+        "--netmask",
+        "24",
+        "--gateway",
+        "10.200.0.1",
+    ]
+}
+
 const PASTA_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const PASST_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
