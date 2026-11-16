@@ -10,7 +10,7 @@ use anyhow::Context;
 use crate::sandbox::cgroup::CGroup;
 use crate::sandbox::config::{CliOverrides, Config, FsShare, GitAction};
 use crate::sandbox::name::Name;
-use crate::sandbox::process::Process;
+use crate::sandbox::process::{Process, read_pid_file};
 use crate::sandbox::socket_path;
 
 const ALL_POSSIBLE_UIDS: u32 = u32::MAX;
@@ -26,10 +26,7 @@ pub fn share_socket_path(sandbox_name: &Name, share_name: &Name) -> PathBuf {
 
 pub fn stop_share(sandbox_name: &Name, share_name: &Name) {
     let socket = share_socket_path(sandbox_name, share_name);
-    let Some(pid) = std::fs::read_to_string(share_pid_path(sandbox_name, share_name))
-        .ok()
-        .and_then(|content| content.trim().parse::<libc::pid_t>().ok())
-    else {
+    let Ok(pid) = read_pid_file(&share_pid_path(sandbox_name, share_name), "virtiofsd") else {
         log::warn!("no pid file for the virtiofsd of `{share_name}`, can't stop it");
         return;
     };

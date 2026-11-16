@@ -242,21 +242,44 @@ pub fn handle(command: Command, config: Option<config::Config>) -> Result<(), an
     Ok(())
 }
 
+fn sandbox_runtime(
+    config: Option<&config::Config>,
+    name: &Name,
+) -> (PathBuf, hypervisor::Hypervisor) {
+    let dir = runtime_dir().join(name);
+    let hypervisor = hypervisor::for_sandbox(config, &dir);
+    (dir, hypervisor)
+}
+
+fn hotplug_runtime(
+    config: &config::Config,
+    name: &Name,
+    operation: &str,
+) -> anyhow::Result<Option<(PathBuf, hypervisor::Hypervisor)>> {
+    let (dir, hypervisor) = sandbox_runtime(Some(config), name);
+    if !hypervisor.has_fs_hotplug_support() {
+        eprintln!(
+            "Hypervisor ({hypervisor}) does not support {operation} shares while the sandbox is running"
+        );
+        return Ok(None);
+    }
+    anyhow::ensure!(
+        hypervisor.is_running(&dir),
+        "sandbox `{name}` is not running"
+    );
+    Ok(Some((dir, hypervisor)))
+}
+
 fn shutdown_sandbox(
     config: Option<&config::Config>,
     name: &Name,
     force: bool,
 ) -> Result<(), anyhow::Error> {
-    let sandbox_runtime_dir = runtime_dir().join(name);
-    let hypervisor = hypervisor::for_sandbox(config, &sandbox_runtime_dir);
+    let (sandbox_runtime_dir, hypervisor) = sandbox_runtime(config, name);
     let result = hypervisor.shutdown(&sandbox_runtime_dir, force);
-    let pid_file = sandbox_runtime_dir.join("blinools.pid");
+    let pid_file = blinools_pid_path(&sandbox_runtime_dir);
     if force && result.is_err() && pid_file.exists() {
-        let pid: libc::pid_t = std::fs::read_to_string(pid_file)
-            .context("reading sandbox parent PID file")?
-            .trim()
-            .parse()
-            .context("parsing sandbox parent PID")?;
+        let pid = process::read_pid_file(&pid_file, "sandbox parent")?;
         anyhow::ensure!(
             pid > 1 && pid != std::process::id() as libc::pid_t,
             "invalid sandbox parent PID"
@@ -298,7 +321,7 @@ fn create_sandbox(
     let shares = config::merge_by_name(config.shares.as_ref(), shares);
     validate_socket_path_lengths(&config.name, &shares)?;
 
-    let pid_file = sandbox_runtime_dir.join("blinools.pid");
+    let pid_file = blinools_pid_path(&sandbox_runtime_dir);
     std::fs::write(&pid_file, std::process::id().to_string())
         .context("writing sandbox parent PID file")?;
     let result = {
@@ -356,17 +379,10 @@ fn attach_share(
     name: Name,
     share: FsShare,
 ) -> Result<(), anyhow::Error> {
-    let sandbox_runtime_dir = runtime_dir().join(&name);
-    let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
-    if !hypervisor.has_fs_hotplug_support() {
-        eprintln!(
-            "Hypervisor ({hypervisor}) does not support attaching shares while the sandbox is running"
-        );
+    let Some((sandbox_runtime_dir, hypervisor)) = hotplug_runtime(&config, &name, "attaching")?
+    else {
         return Ok(());
-    }
-    if !hypervisor.is_running(&sandbox_runtime_dir) {
-        anyhow::bail!("sandbox `{name}` is not running");
-    }
+    };
 
     share
         .validate()
@@ -420,17 +436,10 @@ fn attach_share(
 }
 
 fn detach_share(config: config::Config, name: Name, share: Name) -> Result<(), anyhow::Error> {
-    let sandbox_runtime_dir = runtime_dir().join(&name);
-    let hypervisor = hypervisor::for_sandbox(Some(&config), &sandbox_runtime_dir);
-    if !hypervisor.has_fs_hotplug_support() {
-        eprintln!(
-            "Hypervisor ({hypervisor}) does not support detaching shares while the sandbox is running"
-        );
+    let Some((sandbox_runtime_dir, hypervisor)) = hotplug_runtime(&config, &name, "detaching")?
+    else {
         return Ok(());
-    }
-    if !hypervisor.is_running(&sandbox_runtime_dir) {
-        anyhow::bail!("sandbox `{name}` is not running");
-    }
+    };
 
     hypervisor
         .detach_fs(&name, &sandbox_runtime_dir, &share)
@@ -451,9 +460,8 @@ fn delete_sandbox(
     name: &Name,
     force: bool,
 ) -> Result<(), anyhow::Error> {
-    let sandbox_runtime_dir = runtime_dir().join(name);
+    let (sandbox_runtime_dir, hypervisor) = sandbox_runtime(config, name);
     let sandbox_state_dir = state_dir()?.join(name);
-    let hypervisor = hypervisor::for_sandbox(config, &sandbox_runtime_dir);
 
     let lock = SandboxLock::try_acquire(name)?;
     if !force && (lock.is_none() || hypervisor.is_running(&sandbox_runtime_dir)) {
@@ -462,7 +470,7 @@ fn delete_sandbox(
         );
     }
 
-    hypervisor.shutdown(&sandbox_runtime_dir, force)?;
+    shutdown_sandbox(config, name, force)?;
     if sandbox_runtime_dir.exists() {
         std::fs::remove_dir_all(sandbox_runtime_dir)
             .context("cleaning up sandbox runtime directory")?;
@@ -631,6 +639,10 @@ fn validate_socket_path_lengths(name: &Name, shares: &[FsShare]) -> Result<(), a
     }
 
     Ok(())
+}
+
+fn blinools_pid_path(sandbox_runtime_dir: &Path) -> PathBuf {
+    sandbox_runtime_dir.join("blinools.pid")
 }
 
 pub fn socket_path(sandbox_name: &Name, socket: &str) -> PathBuf {
