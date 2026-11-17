@@ -8,6 +8,10 @@
 * Shell completion for `sandbox shutdown` only suggests running sandboxes.
 * Fix directory path completion for `sandbox create -s` and `--share`.
 
+### Changed
+
+* Update kernel to 7.3.4
+
 ## 0.6.0
 
 ### Changed
