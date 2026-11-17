@@ -26,6 +26,9 @@ Decrease logging verbosity
 **-h**, **--help**  
 Print help (see a summary with '-h')
 
+**-V**, **--version**  
+Print version
+
 # SUBCOMMANDS
 
 [blinools-worktree(1)](blinools-worktree.md)  

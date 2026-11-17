@@ -14,7 +14,8 @@ use clap_complete::{CompleteEnv, Shell, env::Shells};
 #[command(
     name = "blinools",
     about = "Run blinxen's command-line utilities.",
-    after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash"
+    after_long_help = "Examples:\n  blinools worktree wip fix-login\n  blinools sandbox create\n  blinools --config ./sandbox.toml sandbox create work\n  blinools completions bash",
+    version
 )]
 struct Cli {
     #[command(subcommand)]
