@@ -37,6 +37,10 @@ impl Pasta {
             .args(super::common_args())
             .args(super::dns_args(config));
 
+        if config.dns.is_none() {
+            process.args(["--dns-forward", super::DNS_FORWARD_ADDRESS]);
+        }
+
         if log::log_enabled!(log::Level::Debug) {
             process.arg("--debug");
         }

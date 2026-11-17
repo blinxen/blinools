@@ -144,9 +144,8 @@ See [Network](configuration.md#network) in the configuration reference for modes
 DNS settings and destination exceptions. [Networking](sandbox_architecture.md#networking)
 in the architecture guide explains the implementation.
 
-If the sandbox only needs a few local IPs, then use the `Restricted` mode and add them as exceptions
-instead of switching to `Unrestricted`. An exception is an address, a range or a hostname, and can be
-limited to a port:
+In `Restricted` mode, an exception can allow an address, range, or hostname.
+An exception can specify a destination port.
 
 ```toml
 [sandbox.network]

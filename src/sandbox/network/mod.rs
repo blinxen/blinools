@@ -8,6 +8,8 @@ use anyhow::Context;
 
 use crate::sandbox::{cgroup::CGroup, config::Config};
 
+const DNS_FORWARD_ADDRESS: &str = "10.200.0.3";
+
 pub(super) fn dns_args(config: &Config) -> Vec<String> {
     config
         .dns

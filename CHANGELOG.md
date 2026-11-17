@@ -4,6 +4,7 @@
 
 ### Fixed
 
+* Fix DNS not working properly when `dns` configuration is omitted. Sandbox DNS queries are sent to the host resolver.
 * `sandbox shutdown --force` falls back to signaling the parent blinools process when hypervisor shutdown fails.
 * Shell completion for `sandbox shutdown` only suggests running sandboxes.
 * Fix directory path completion for `sandbox create -s` and `--share`.

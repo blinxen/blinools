@@ -34,6 +34,10 @@ impl Passt {
             .args(super::common_args())
             .args(super::dns_args(config));
 
+        if config.dns.is_none() {
+            process.args(["--dns", super::DNS_FORWARD_ADDRESS]);
+        }
+
         if log::log_enabled!(log::Level::Debug) {
             process.arg("--debug");
         }
@@ -43,7 +47,10 @@ impl Passt {
         }
 
         if config.network.mode == config::NetworkMode::Restricted {
-            let dns = config.dns.clone();
+            let dns = config
+                .dns
+                .clone()
+                .or_else(|| Some(vec![super::DNS_FORWARD_ADDRESS.to_owned()]));
             let exceptions = config.network.exceptions.clone();
             process.pre_exec(|| firewall::install(dns, exceptions));
         }

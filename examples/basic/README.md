@@ -8,12 +8,13 @@ This example builds a very simple sandbox based on Fedora.
 cd examples/basic
 ./build-rootfs.sh
 ./build-kernel.sh
-blinools --config blinool.toml sandbox create basic
+blinools --config blinools.toml sandbox create basic
 ```
 
-Start from the repository root. The included [blinool.toml](blinool.toml) uses
-`kernel` and `rootfs.img` in the example directory. Adjust its DNS server and
-virtiofsd path for your host before starting the sandbox.
+Start from the repository root. The included [blinools.toml](blinools.toml) uses
+`kernel` and `rootfs.img` in the example directory. Adjust its virtiofsd path for
+your host before starting the sandbox. DNS needs no configuration: the sandbox uses the
+host's resolver, see the `dns` option in [docs/configuration.md](../../docs/configuration.md).
 
 The host needs the [sandbox requirements](../../docs/sandbox.md#requirements).
 This example builds an x86_64 kernel and rootfs. Building also needs Bash,

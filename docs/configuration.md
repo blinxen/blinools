@@ -7,7 +7,6 @@ blinools.toml - configuration file for blinools
 ## Description
 
 `blinools.toml` configures blinools using TOML.
-Configuration comes from an optional global file and an optional project file.
 
 ## Files
 
@@ -93,7 +92,8 @@ Allowed characters are:
 - `cpus` (integer, required): Number of guest CPUs. The accepted range is from 1 to 255.
 - `network` (table): Controls what the sandbox can reach on the network. See [Network](#network).
 - `dns` (array of strings): IPv4 or IPv6 DNS server addresses advertised to the guest.
-  See [Network](#network) for how these addresses interact with the firewall.
+  If omitted, queries go to the first IPv4 nameserver in the host's `/etc/resolv.conf`.
+  See [Network](#network) for firewall rules.
 - `git_action` (enum): How existing `.git` entries inside shares are exposed.
   - `"ReadOnly"` (the default): Mount the entries read-only. Working tree access follows the share's normal settings.
   - `"Hide"`: Cover the entries with empty, read-only files or directories.
@@ -138,7 +138,7 @@ The `network` table has the following options:
   - `"None"`: Disable networking.
 
   ICMP and incoming port forwarding are disabled in both enabled modes.
-  In `Restricted` mode, each configured `dns` address gets an automatic exemption on
+  In `Restricted` mode, each advertised DNS address gets an automatic exemption on
   destination port 53. Other ports follow the normal destination rules: public addresses
   remain reachable, and an explicit exception can allow other ports on a blocked address.
 - `exceptions` (array of tables): List of exceptions to add for outgoing connections.

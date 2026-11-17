@@ -9,12 +9,13 @@ It also includes development tools and a dedicated user that should be used for 
 cd examples/ai-agent
 ./build-rootfs.sh
 ./build-kernel.sh
-blinools --config blinool.toml sandbox create ai-agent
+blinools --config blinools.toml sandbox create ai-agent
 ```
 
-Start from the repository root. The included [blinool.toml](blinool.toml) uses
-`kernel` and `rootfs.img` in the example directory. Adjust its DNS server and
-virtiofsd path for your host before starting the sandbox.
+Start from the repository root. The included [blinools.toml](blinools.toml) uses
+`kernel` and `rootfs.img` in the example directory. Adjust its virtiofsd path for
+your host before starting the sandbox. DNS needs no configuration: the sandbox uses the
+host's resolver, see the `dns` option in [docs/configuration.md](../../docs/configuration.md).
 
 The host needs the [sandbox requirements](../../docs/sandbox.md#requirements).
 This example builds an x86_64 kernel and rootfs. Building also needs Bash,
@@ -46,7 +47,7 @@ export YOUR_API_KEY='your-api-key'
 2. From `examples/ai-agent`, start the sandbox with the directory containing your shell scripts with the share name `api-keys`:
 
 ```bash
-blinools --config blinool.toml sandbox create ai-agent --share "api-keys:<PATH-TO-API-KEYS>:ro"
+blinools --config blinools.toml sandbox create ai-agent --share "api-keys:<PATH-TO-API-KEYS>:ro"
 ```
 
 The sandbox loads the shell scripts when it opens a bash session.

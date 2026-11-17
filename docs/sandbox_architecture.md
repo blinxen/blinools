@@ -1,8 +1,7 @@
 # Sandbox Architecture
 
-This document describes how sandboxes are built.
-For setup and usage, see the [sandbox guide](sandbox.md) and
-for option values see the [configuration reference](configuration.md).
+See the [sandbox guide](sandbox.md) for setup and usage and the
+[configuration reference](configuration.md) for options.
 
 ## Architecture
 
@@ -114,8 +113,10 @@ With networking enabled, two programs cooperate:
    It configures that namespace and forwards outgoing traffic to the host network.
 
 The guest IPv4 address is `10.200.0.2/24`, with gateway `10.200.0.1`. The configured `dns` addresses are passed
-to both programs. With `network.mode = "None"`, neither program is started and
-the VMM receives no NIC.
+to both programs.
+If `dns` is omitted, passt advertises `10.200.0.3` as the DNS server and
+pasta forwards queries sent to that address to the host resolver.
+With `network.mode = "None"`, neither program is started and the VMM receives no NIC.
 
 In `Restricted` mode, blinools installs an nftables table (`ROOT_TABLE`, family
 `inet`) **inside passt's network namespace**, after pasta configures networking
@@ -125,7 +126,7 @@ and before passt executes. `Unrestricted` mode skips the firewall.
 | --- | --- | --- |
 | `input` | drop | Accept established and related connections |
 | `forward` | drop | No rules, the namespace does not route packets |
-| `output` | accept | Drop traffic to `lo`, accept configured DNS addresses on port 53, accept `network.exceptions`, drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
+| `output` | accept | Drop traffic to `lo`, accept advertised DNS addresses on port 53, accept `network.exceptions`, drop `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` and `169.254.0.0/16`, drop `fc00::/7` and `fe80::/10` |
 
 The first matching output rule wins. DNS and destination exceptions are evaluated
 before the blocked address ranges and after the loopback-interface drop.
