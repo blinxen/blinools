@@ -169,20 +169,11 @@ impl Backend for CloudHypervisor {
         let response = api(&api_socket_path, "PUT", "vm.add-fs", Some(&body))
             .context("requesting cloud hypervisor to attach the share")?;
 
-        if !response.success() {
-            let message = match response.status_code {
-                404 => "sandbox does not exist",
-                409 => "share is already attached to the sandbox",
-                _ => &response.body,
-            };
-            anyhow::bail!(
-                "cloud hypervisor refused to attach the share ({}): {}",
-                response.status_code,
-                message
-            );
-        }
-
-        Ok(())
+        response.check_share(
+            "attach",
+            "sandbox does not exist",
+            "share is already attached to the sandbox",
+        )
     }
 
     fn detach_fs(
@@ -196,20 +187,11 @@ impl Backend for CloudHypervisor {
         let response = api(&api_socket_path, "PUT", "vm.remove-device", Some(&body))
             .context("requesting cloud hypervisor to detach the share")?;
 
-        if !response.success() {
-            let message = match response.status_code {
-                404 => "share is not attached to the sandbox",
-                409 => "it is not possible to detach the share from the sandbox at this time",
-                _ => &response.body,
-            };
-            anyhow::bail!(
-                "cloud hypervisor refused to detach the share ({}): {}",
-                response.status_code,
-                message
-            );
-        }
-
-        Ok(())
+        response.check_share(
+            "detach",
+            "share is not attached to the sandbox",
+            "it is not possible to detach the share from the sandbox at this time",
+        )
     }
 
     fn handle_event(
@@ -245,6 +227,22 @@ struct ApiResponse {
 impl ApiResponse {
     pub fn success(&self) -> bool {
         (200..300).contains(&self.status_code)
+    }
+
+    fn check_share(&self, operation: &str, not_found: &str, conflict: &str) -> anyhow::Result<()> {
+        if !self.success() {
+            let message = match self.status_code {
+                404 => not_found,
+                409 => conflict,
+                _ => &self.body,
+            };
+            anyhow::bail!(
+                "cloud hypervisor refused to {operation} the share ({}): {}",
+                self.status_code,
+                message
+            );
+        }
+        Ok(())
     }
 }
 
